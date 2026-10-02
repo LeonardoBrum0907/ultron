@@ -6,7 +6,7 @@ import { useStore } from '../store'
  * Rotating example commands, shown only while idle.
  *
  * A voice interface has no menus — nothing tells you what it can do. This is
- * the affordance. It disappears the moment JARVIS is doing anything, so it
+ * the affordance. It disappears the moment ULTRON is doing anything, so it
  * never competes with the answer.
  *
  * Each line is phrased the way you'd actually say it, not as a feature name.
@@ -52,7 +52,7 @@ export function Suggestions() {
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.35 }}
         >
-          “hey jarvis, {EXAMPLES[i]}”
+          “hey ultron, {EXAMPLES[i]}”
         </motion.span>
       </AnimatePresence>
     </div>

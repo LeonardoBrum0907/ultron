@@ -20,7 +20,7 @@ let master: GainNode | null = null
 const samples = new Map<Cue, AudioBuffer>()
 let ambient: { source: AudioBufferSourceNode; gain: GainNode } | null = null
 
-/** Where the master sits when JARVIS isn't speaking. */
+/** Where the master sits when ULTRON isn't speaking. */
 let volume = 0.5
 let ducked = false
 /** How far everything this module makes drops under the voice. */
@@ -280,7 +280,7 @@ export function stopAmbient() {
 }
 
 /**
- * Duck everything this module makes while JARVIS speaks.
+ * Duck everything this module makes while ULTRON speaks.
  *
  * This used to touch only the synthesised bed, and return early when there
  * wasn't one — which there never is, because the ambient layer in the shipped

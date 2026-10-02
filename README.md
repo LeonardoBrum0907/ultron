@@ -1,7 +1,7 @@
-# J.A.R.V.I.S.
+# U.L.T.R.O.N.
 
 A browser voice assistant with an Iron Man holographic interface. Say
-**"Hey Jarvis"**, he wakes, listens, and does real things through your tools —
+**"Hey Ultron"**, he wakes, listens, and does real things through your tools —
 searches the web, generates images, drives your phone, reads your mail. The face
 is a web page (React + Vite + Three.js + custom GLSL). The brain is Claude Code,
 run headless as a library.
@@ -10,7 +10,7 @@ run headless as a library.
 account, no cloud bill — the brain runs on your existing Claude Code login, and
 the heavy work (the model itself) runs on Anthropic's servers, so even a low-end
 laptop only has to draw the interface. **ElevenLabs is an optional add-on** that
-gives JARVIS a much better voice and sharper hearing; without it he speaks and
+gives ULTRON a much better voice and sharper hearing; without it he speaks and
 listens through the browser's own speech, and everything still works.
 
 ---
@@ -30,7 +30,7 @@ can have — Node.js and Chrome. That's the whole list.
 - **Google Chrome or Microsoft Edge**, in a **real browser window** — not an
   embedded preview pane. Preview panes (including the one inside editors and
   Claude Code) block microphone access, so the page loads and looks right but
-  never hears you. JARVIS also needs WebGL, which these browsers provide.
+  never hears you. ULTRON also needs WebGL, which these browsers provide.
 - **Optional: an ElevenLabs API key** — a good add-on, not a requirement. It
   gives a better voice and sharper transcription; the free tier is plenty for a
   demo. Without it, everything runs on the browser's own speech.
@@ -49,7 +49,7 @@ npm install
 npm start          # runs the brain and the face together
 ```
 
-Then open the URL it prints (http://localhost:5173) in **Chrome**, click **INITIALISE**, and say **“Hey Jarvis”**.
+Then open the URL it prints (http://localhost:5173) in **Chrome**, click **INITIALISE**, and say **“Hey Ultron”**.
 
 Prefer two terminals? Run them separately instead:
 
@@ -75,21 +75,21 @@ Then open the app in a **real Chrome or Edge window**:
 open http://localhost:5173
 ```
 
-Click **INITIALISE**, allow the microphone when asked, and say **"Hey Jarvis"**.
+Click **INITIALISE**, allow the microphone when asked, and say **"Hey Ultron"**.
 
 > It has to be a real browser window. Embedded preview panes block the
-> microphone, so JARVIS will look perfectly alive and simply never respond.
+> microphone, so ULTRON will look perfectly alive and simply never respond.
 
 ---
 
 ## How it works
 
-JARVIS is two processes. The browser is the face and the voice; the bridge is
+ULTRON is two processes. The browser is the face and the voice; the bridge is
 the brain and the hands.
 
 ```
   ┌─ browser (the face) ───────────────┐        ┌─ bridge (the brain) ─────────────┐
-  │  "Hey Jarvis" wake word            │        │  Node · bridge/server.mjs        │
+  │  "Hey Ultron" wake word            │        │  Node · bridge/server.mjs        │
   │  local VAD  →  speech to text      │   ws   │  Claude Agent SDK                │
   │  reactor UI (Three.js + GLSL)      │◄─────► │   = Claude Code, headless        │
   │  text to speech                    │  8787  │  spawns your MCP servers         │
@@ -109,8 +109,8 @@ rest. The bridge can. And because it is the Agent SDK, it authenticates off your
 existing Claude Code login: no API key, billed to that same Claude account.
 
 **The model.** `claude-opus-5` at effort `medium` by default. Override with the
-`JARVIS_MODEL` and `JARVIS_EFFORT` environment variables. On startup the bridge
-prints its choice, e.g. `[jarvis] model claude-opus-5 · effort medium`.
+`ULTRON_MODEL` and `ULTRON_EFFORT` environment variables. On startup the bridge
+prints its choice, e.g. `[ultron] model claude-opus-5 · effort medium`.
 
 ### The voice pipeline
 
@@ -118,7 +118,7 @@ The loop is designed so that nothing silently dies and barge-in feels natural.
 
 - **Detection is local.** An energy-based voice-activity detector
   (`src/lib/vad.ts`) decides when you are speaking. It is instant, cannot quietly
-  fail, and is what makes **barge-in** work — speak while JARVIS is talking and he
+  fail, and is what makes **barge-in** work — speak while ULTRON is talking and he
   stops.
 - **Transcription has two tiers, chosen automatically at boot.** The browser asks
   the bridge `/health` and picks the best available:
@@ -137,9 +137,9 @@ ElevenLabs key) once at boot and picks the engines.
 
 ---
 
-## What JARVIS can do
+## What ULTRON can do
 
-Beyond answering, JARVIS reaches every MCP server in your Claude Code
+Beyond answering, ULTRON reaches every MCP server in your Claude Code
 configuration, and can drive his own interface.
 
 ### Your tools
@@ -164,7 +164,7 @@ A few things you can say:
 > account** are not stored on disk, so the bridge cannot see them — it works from
 > the servers in `~/.claude.json` (about 14), not the claude.ai ones.
 
-### JARVIS controls the interface
+### ULTRON controls the interface
 
 He drives the UI through MCP tools the bridge exposes:
 
@@ -181,7 +181,7 @@ command.
 
 ### The heads-up display
 
-JARVIS authors panels with a `display` tool against a fixed `.hud-*` design
+ULTRON authors panels with a `display` tool against a fixed `.hud-*` design
 system. The browser sanitises the markup (DOMPurify, a class allowlist and a
 strict CSP) before rendering. Rich media works — images, `<video>`, and
 YouTube/Vimeo embeds. Remote images and video are fetched **server-side** through
@@ -195,7 +195,7 @@ chose.
 
 | Key / phrase | Does |
 |---|---|
-| **"Hey Jarvis"** | Wake him |
+| **"Hey Ultron"** | Wake him |
 | **Space** | Talk without the wake word |
 | Just speak | Interrupt him mid-sentence (barge-in) |
 | **V** | Cycle the browser voice |
@@ -209,7 +209,7 @@ chose.
 
 Power-up plays a four-beat Iron Man start-up (`src/ui/Boot.tsx`): an
 "INITIATING SYSTEM" status bar with a segmented progress bar and boot log; then
-concentric reticle rings resolving into "J.A.R.V.I.S"; then a suit schematic;
+concentric reticle rings resolving into "U.L.T.R.O.N"; then a suit schematic;
 then the triangular arc reactor lighting up — with a start-up sound under it
 (`public/audio/boot-music.mp3`).
 
@@ -224,14 +224,14 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 
 | Variable | Default | Effect |
 |---|---|---|
-| `JARVIS_BRIDGE_PORT` | `8787` | Port for the WebSocket + HTTP endpoints |
-| `JARVIS_MODEL` | `claude-opus-5` | Model to run |
-| `JARVIS_EFFORT` | `medium` | Reasoning effort |
-| `JARVIS_ALLOW_WRITES` | off | `1` allows effectful tools (see below) |
-| `JARVIS_ALLOWED_ORIGINS` | local dev | Extra WebSocket origins to accept |
-| `JARVIS_ALLOW_NO_ORIGIN` | off | Accept connections with no `Origin` header |
-| `JARVIS_FILE_ROOTS` | — | Roots the `/file` endpoint may serve from |
-| `JARVIS_VOICE_ID` | — | ElevenLabs voice id |
+| `ULTRON_BRIDGE_PORT` | `8787` | Port for the WebSocket + HTTP endpoints |
+| `ULTRON_MODEL` | `claude-opus-5` | Model to run |
+| `ULTRON_EFFORT` | `medium` | Reasoning effort |
+| `ULTRON_ALLOW_WRITES` | off | `1` allows effectful tools (see below) |
+| `ULTRON_ALLOWED_ORIGINS` | local dev | Extra WebSocket origins to accept |
+| `ULTRON_ALLOW_NO_ORIGIN` | off | Accept connections with no `Origin` header |
+| `ULTRON_FILE_ROOTS` | — | Roots the `/file` endpoint may serve from |
+| `ULTRON_VOICE_ID` | — | ElevenLabs voice id |
 | `ELEVENLABS_API_KEY` | — | Optional; enables the ElevenLabs voice + Scribe |
 
 ### Frontend (`.env.local`)
@@ -274,7 +274,7 @@ way instead:
 npm run bridge:writes
 ```
 
-> Read `decideTool()` before you do. *"Hey Jarvis, clean up my downloads folder"*
+> Read `decideTool()` before you do. *"Hey Ultron, clean up my downloads folder"*
 > means something rather different with writes enabled.
 
 ---
@@ -298,7 +298,7 @@ terminal, and that nothing else is holding port `8787`.
 All of this lives in `bridge/server.mjs`:
 
 - The WebSocket accepts only local dev origins (add more with
-  `JARVIS_ALLOWED_ORIGINS`).
+  `ULTRON_ALLOWED_ORIGINS`).
 - `/file`, `/img` and `/media` validate the scheme, confine to allowed roots,
   resolve the real path, and refuse private and loopback addresses (SSRF guard).
 - The tool gate (`decideTool`) is default-deny for effectful MCP tools.

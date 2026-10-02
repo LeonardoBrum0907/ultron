@@ -1,5 +1,5 @@
 {
-  "name": "jarvis",
+  "name": "ultron",
   "private": true,
   "version": "0.0.0",
   "description": "A browser voice assistant with an Iron Man holographic interface, driven by Claude Code through a small Node bridge.",
@@ -15,7 +15,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "bridge": "node bridge/server.mjs",
-    "bridge:writes": "JARVIS_ALLOW_WRITES=1 node bridge/server.mjs",
+    "bridge:writes": "ULTRON_ALLOW_WRITES=1 node bridge/server.mjs",
     "setup": "node scripts/setup.mjs"
   },
   "dependencies": {

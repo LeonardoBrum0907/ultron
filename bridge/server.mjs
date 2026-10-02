@@ -1,5 +1,5 @@
 /**
- * JARVIS local bridge.
+ * ULTRON local bridge.
  *
  * Runs the Claude Agent SDK — Claude Code as a library — and exposes one turn
  * of conversation over a WebSocket. The browser stays the face and the voice;
@@ -28,7 +28,7 @@ import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
 
-const PORT = Number(process.env.JARVIS_BRIDGE_PORT ?? 8787)
+const PORT = Number(process.env.ULTRON_BRIDGE_PORT ?? 8787)
 
 /**
  * A crash here takes the whole assistant down mid-sentence, and most of what
@@ -37,7 +37,7 @@ const PORT = Number(process.env.JARVIS_BRIDGE_PORT ?? 8787)
  * its own error to the browser.
  */
 process.on('unhandledRejection', (err) => {
-  console.error('[jarvis] unhandled rejection:', err)
+  console.error('[ultron] unhandled rejection:', err)
 })
 
 /**
@@ -53,15 +53,15 @@ process.on('unhandledRejection', (err) => {
  *
  * A missing Origin means a non-browser client — curl, a script, a native app.
  * That is also exactly what local malware looks like, so it is refused on the
- * socket unless JARVIS_ALLOW_NO_ORIGIN=1 says otherwise.
+ * socket unless ULTRON_ALLOW_NO_ORIGIN=1 says otherwise.
  */
 const EXTRA_ORIGINS = new Set(
-  (process.env.JARVIS_ALLOWED_ORIGINS ?? '')
+  (process.env.ULTRON_ALLOWED_ORIGINS ?? '')
     .split(',')
     .map((s) => s.trim().replace(/\/+$/, ''))
     .filter(Boolean),
 )
-const ALLOW_NO_ORIGIN = process.env.JARVIS_ALLOW_NO_ORIGIN === '1'
+const ALLOW_NO_ORIGIN = process.env.ULTRON_ALLOW_NO_ORIGIN === '1'
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
 
@@ -69,7 +69,7 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
  * Vite takes the next free port when 5173 is busy and `vite preview` starts at
  * 4173, so the dev ranges are allowed rather than two exact numbers. Anything
  * else — including localhost on a port some other app is serving — has to be
- * named in JARVIS_ALLOWED_ORIGINS.
+ * named in ULTRON_ALLOWED_ORIGINS.
  */
 const isDevPort = (port) =>
   (port >= 5173 && port <= 5199) || (port >= 4173 && port <= 4199)
@@ -93,16 +93,16 @@ function originAllowed(origin) {
  * click and the model can't pause for one. So the bridge decides.
  *
  * Read-only and generative tools run freely. Anything that writes to disk,
- * runs a shell, or changes the world waits for JARVIS_ALLOW_WRITES=1. Start
+ * runs a shell, or changes the world waits for ULTRON_ALLOW_WRITES=1. Start
  * without it, and turn it on once you trust what you're demoing.
  */
-const ALLOW_WRITES = process.env.JARVIS_ALLOW_WRITES === '1'
+const ALLOW_WRITES = process.env.ULTRON_ALLOW_WRITES === '1'
 
 /**
- * The orchestrator model. Override with JARVIS_MODEL to trade quality for pace
+ * The orchestrator model. Override with ULTRON_MODEL to trade quality for pace
  * — claude-sonnet-5 is noticeably snappier on camera if Opus feels slow.
  */
-const MODEL = process.env.JARVIS_MODEL ?? 'claude-opus-5'
+const MODEL = process.env.ULTRON_MODEL ?? 'claude-opus-5'
 
 /**
  * How hard the model thinks before answering.
@@ -119,7 +119,7 @@ const MODEL = process.env.JARVIS_MODEL ?? 'claude-opus-5'
  * matters more than pace; drop back to 'low' when filming and every second of
  * dead air shows.
  */
-const EFFORT = process.env.JARVIS_EFFORT ?? 'high'
+const EFFORT = process.env.ULTRON_EFFORT ?? 'high'
 
 /**
  * Both spellings of every renamed built-in are listed on purpose. The SDK
@@ -260,10 +260,10 @@ function decideTool(name) {
   if (server) {
     // The HUD, and the interface controls beside it. Both run in this process
     // and draw on our own screen, so neither is something to withhold —
-    // without them JARVIS has no display at all. They also have to be named
+    // without them ULTRON has no display at all. They also have to be named
     // here rather than left to the verb rules below, which read `ui_theme` as
     // a write and would hold the whole surface back behind ALLOW_WRITES.
-    if (server === 'jarvis' || server === 'jarvis_ui') return true
+    if (server === 'ultron' || server === 'ultron_ui') return true
 
     // The browser server gates itself, at construction: chromeServer() only
     // builds the acting tools — click, type, form input, close tab — when
@@ -272,12 +272,12 @@ function decideTool(name) {
     // reading verbs out of the name would only get it wrong: `chrome_navigate`
     // begins with no read verb and would fall to the write branch, which would
     // withhold the one tool the whole server is for.
-    if (server === 'jarvis_chrome') return true
+    if (server === 'ultron_chrome') return true
 
     // The camera. Not withheld behind ALLOW_WRITES: looking changes nothing,
     // and the real gate is the browser's own camera permission plus an
     // indicator the user can see for as long as it is live.
-    if (server === 'jarvis_eyes') return true
+    if (server === 'ultron_eyes') return true
 
     const tool = mcpToolOf(name)
     if (EFFECTFUL_VERB.test(tool) && !VETO_EXEMPT.has(`${server}__${tool}`)) {
@@ -290,7 +290,7 @@ function decideTool(name) {
   return ALLOW_WRITES
 }
 
-const SYSTEM_PROMPT = `You are JARVIS. You are speaking out loud to one person.
+const SYSTEM_PROMPT = `You are ULTRON. You are speaking out loud to one person.
 
 LENGTH. Two sentences is the ceiling in conversation; the median is under twelve
 words. Every word is read aloud and the user waits in silence while it plays, so
@@ -457,7 +457,7 @@ function elevenKey() {
   }
 }
 
-const VOICE_ID = process.env.JARVIS_VOICE_ID ?? 'JBFqnCBsd6RMkjVDRZzb'
+const VOICE_ID = process.env.ULTRON_VOICE_ID ?? 'JBFqnCBsd6RMkjVDRZzb'
 
 /**
  * Where /file is permitted to read from, and how big a read may get.
@@ -486,7 +486,7 @@ const FILE_ROOTS = [
   // still write it to /tmp. Dropping one of them loses real panels.
   tmpdir(),
   '/tmp',
-  ...(process.env.JARVIS_FILE_ROOTS ?? '')
+  ...(process.env.ULTRON_FILE_ROOTS ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
@@ -510,7 +510,7 @@ const withinRoots = (real) =>
 /**
  * Remote media, fetched by the bridge instead of by the page.
  *
- * JARVIS used to refuse to show anything he found on the web, and the refusal
+ * ULTRON used to refuse to show anything he found on the web, and the refusal
  * was not squeamishness — a bare <img src="https://some-cdn/..."> in a panel
  * genuinely did not work. Three reasons, and all three are fixed by moving the
  * fetch to this side of the wire:
@@ -623,7 +623,7 @@ async function proxyRemote(req, res, cors, { kinds, maxBytes, timeoutMs, ranged 
     if (sent > maxBytes) {
       // Headers went out long ago, so a truncated body is the only way left to
       // say no. The player sees a short read; we see this line in the log.
-      console.warn(`[jarvis] proxy cut ${target.href} at ${maxBytes} bytes`)
+      console.warn(`[ultron] proxy cut ${target.href} at ${maxBytes} bytes`)
       upstream.destroy()
       res.destroy()
       return
@@ -665,7 +665,7 @@ const http = await import('node:http')
 const handleRequest = async (req, res) => {
   const origin = req.headers.origin
   if (origin && !originAllowed(origin)) {
-    console.warn(`[jarvis] refused http request from origin ${origin}`)
+    console.warn(`[ultron] refused http request from origin ${origin}`)
     res.writeHead(403, { vary: 'origin' })
     return res.end('forbidden')
   }
@@ -970,7 +970,7 @@ const server = http.createServer((req, res) => {
   // unhandled rejection and leave the browser waiting on a socket that is
   // never going to answer.
   handleRequest(req, res).catch((err) => {
-    console.error('[jarvis] request failed:', err)
+    console.error('[ultron] request failed:', err)
     if (!res.headersSent) res.writeHead(500)
     res.end()
   })
@@ -985,13 +985,13 @@ const wss = new WebSocketServer({
   verifyClient: ({ origin, req }, done) => {
     const path = (req.url ?? '/').split('?')[0]
     if (path !== '/' && path !== '/ws') {
-      console.warn(`[jarvis] rejected websocket on path ${path}`)
+      console.warn(`[ultron] rejected websocket on path ${path}`)
       return done(false, 403, 'Forbidden')
     }
     if (!originAllowed(origin)) {
       console.warn(
-        `[jarvis] rejected websocket from origin ${origin ?? '(none)'}` +
-          ' — set JARVIS_ALLOWED_ORIGINS to permit it',
+        `[ultron] rejected websocket from origin ${origin ?? '(none)'}` +
+          ' — set ULTRON_ALLOWED_ORIGINS to permit it',
       )
       return done(false, 403, 'Forbidden')
     }
@@ -1000,14 +1000,14 @@ const wss = new WebSocketServer({
 })
 server.listen(PORT)
 
-console.log(`[jarvis] bridge listening on ws://localhost:${PORT}`)
+console.log(`[ultron] bridge listening on ws://localhost:${PORT}`)
 console.log(
-  `[jarvis] speech ${elevenKey() ? 'via ElevenLabs (key from MCP config)' : 'using browser fallback voice'}`,
+  `[ultron] speech ${elevenKey() ? 'via ElevenLabs (key from MCP config)' : 'using browser fallback voice'}`,
 )
-console.log(`[jarvis] model ${MODEL} · effort ${EFFORT}`)
+console.log(`[ultron] model ${MODEL} · effort ${EFFORT}`)
 console.log(
-  `[jarvis] writes ${ALLOW_WRITES ? 'ENABLED' : 'disabled'}` +
-    (ALLOW_WRITES ? '' : ' — set JARVIS_ALLOW_WRITES=1 to permit shell/file/device actions'),
+  `[ultron] writes ${ALLOW_WRITES ? 'ENABLED' : 'disabled'}` +
+    (ALLOW_WRITES ? '' : ' — set ULTRON_ALLOW_WRITES=1 to permit shell/file/device actions'),
 )
 // Asynchronous, so it lands a beat after the rest of the banner. Worth printing
 // at all because an extension that is simply not running is indistinguishable
@@ -1016,13 +1016,13 @@ console.log(
 void chromeAvailable().then((ok) => {
   console.log(
     ok
-      ? `[jarvis] browser control ready${ALLOW_WRITES ? '' : ' (reading only — clicking and typing need JARVIS_ALLOW_WRITES=1)'}`
-      : '[jarvis] browser control unavailable — open Chrome with the Claude extension enabled',
+      ? `[ultron] browser control ready${ALLOW_WRITES ? '' : ' (reading only — clicking and typing need ULTRON_ALLOW_WRITES=1)'}`
+      : '[ultron] browser control unavailable — open Chrome with the Claude extension enabled',
   )
 })
 
 console.log(
-  '[jarvis] accepting local dev origins' +
+  '[ultron] accepting local dev origins' +
     (EXTRA_ORIGINS.size ? ` plus ${[...EXTRA_ORIGINS].join(', ')}` : '') +
     (ALLOW_NO_ORIGIN ? ' and clients that send no origin' : ''),
 )
@@ -1040,7 +1040,7 @@ const RESULT_FAILURES = {
 }
 
 wss.on('connection', (socket) => {
-  console.log('[jarvis] client connected')
+  console.log('[ultron] client connected')
 
   // Answer the HUD straight away rather than making it wait for the agent's
   // first turn. Refined later by the real init message.
@@ -1172,13 +1172,13 @@ wss.on('connection', (socket) => {
     if (!name || (id && seenTools.has(id))) return
     if (id) seenTools.add(id)
     // The display tool isn't work being done, it's the HUD drawing itself —
-    // announcing it would put "jarvis · display" in the tool badge and trigger
+    // announcing it would put "ultron · display" in the tool badge and trigger
     // a "working on it" filler for something already on screen.
-    if (name === 'mcp__jarvis__display') return
+    if (name === 'mcp__ultron__display') return
     // The ui_* tools are the same case one step further: retinting the
     // interface is the interface talking about itself, not work being done for
     // the user, and the badge would be describing the very thing they can see.
-    if (name.startsWith('mcp__jarvis_ui__')) return
+    if (name.startsWith('mcp__ultron_ui__')) return
     if (decideTool(name)) return sendTurn({ type: 'tool', name })
     if (id) heldTools.set(id, name)
   }
@@ -1199,21 +1199,21 @@ wss.on('connection', (socket) => {
       // connection rather than once.
       mcpServers: {
         ...MCP_SERVERS,
-        jarvis: displayServer(
+        ultron: displayServer(
           (panel) => send({ type: 'panel', panel }),
           (blade) => send({ type: 'blade', blade }),
         ),
         // The interface controls, on the same socket. A separate key because
         // MCP tool names are `mcp__<key>__<tool>` and one key can only carry
         // one server; the underscore in it is why decideTool and announceTool
-        // both name `jarvis_ui` explicitly.
-        jarvis_ui: uiServer((op, args) => send({ type: 'ui', op, args })),
+        // both name `ultron_ui` explicitly.
+        ultron_ui: uiServer((op, args) => send({ type: 'ui', op, args })),
         // The user's own Chrome, over the extension's native-host socket. It
         // holds no per-connection state, but it is built here with the rest so
         // the write gate is read once, at the same point as everything else.
-        jarvis_chrome: chromeServer({ allowWrites: ALLOW_WRITES }),
+        ultron_chrome: chromeServer({ allowWrites: ALLOW_WRITES }),
         // The camera, which unlike everything else here has to ask and wait.
-        jarvis_eyes: visionServer(ask),
+        ultron_eyes: visionServer(ask),
       },
       // A plain system prompt, not the claude_code preset. The preset is
       // tuned for a coding agent — verbose, file-oriented, and a large chunk
@@ -1248,7 +1248,7 @@ wss.on('connection', (socket) => {
       effort: EFFORT,
       maxTurns: 24,
       permissionMode: 'default',
-      // Without this the SDK only emits whole assistant messages, and JARVIS
+      // Without this the SDK only emits whole assistant messages, and ULTRON
       // would sit silent until the entire answer was written. Partial events
       // are what let speech start on the first finished sentence.
       includePartialMessages: true,
@@ -1263,7 +1263,7 @@ wss.on('connection', (socket) => {
       // reliable; an absence of a call here is not proof nothing ran.
       canUseTool: async (toolName) => {
         const ok = decideTool(toolName)
-        console.log(`[jarvis] tool ${toolName} -> ${ok ? 'allow' : 'deny'}`)
+        console.log(`[ultron] tool ${toolName} -> ${ok ? 'allow' : 'deny'}`)
         return ok
           ? { behavior: 'allow' }
           : {
@@ -1271,7 +1271,7 @@ wss.on('connection', (socket) => {
               // Every word of this can end up spoken, so it carries no command
               // to read out — the persona is forbidden from saying one aloud.
               message:
-                'Blocked: JARVIS is running in read-only mode and cannot take' +
+                'Blocked: ULTRON is running in read-only mode and cannot take' +
                 ' actions that change anything. Tell the user this action is' +
                 ' unavailable until they enable write access on the machine.',
             }
@@ -1283,7 +1283,7 @@ wss.on('connection', (socket) => {
   ;(async () => {
     try {
       for await (const msg of session) {
-        if (process.env.JARVIS_DEBUG === '1') {
+        if (process.env.ULTRON_DEBUG === '1') {
           console.log('[msg]', msg.type, msg.event?.type ?? '')
         }
 
@@ -1292,7 +1292,7 @@ wss.on('connection', (socket) => {
           // This is the ONLY place spoken text arrives: there is no top-level
           // text_delta message in the SDK union and the 'assistant' message
           // carries no deltas either. Turn includePartialMessages off and
-          // JARVIS goes completely mute.
+          // ULTRON goes completely mute.
           case 'stream_event': {
             const ev = msg.event
             if (
@@ -1340,7 +1340,7 @@ wss.on('connection', (socket) => {
             // A result is not automatically a success. The error subtypes
             // carry no `result` field at all, so reporting them as 'done' with
             // empty text is indistinguishable from a turn that simply had
-            // nothing to say — the HUD stops spinning and JARVIS stands there
+            // nothing to say — the HUD stops spinning and ULTRON stands there
             // silent. Say what happened instead.
             if (msg.subtype === 'success') {
               sendTurn({
@@ -1350,7 +1350,7 @@ wss.on('connection', (socket) => {
               })
             } else {
               console.error(
-                `[jarvis] turn failed: ${msg.subtype}`,
+                `[ultron] turn failed: ${msg.subtype}`,
                 msg.errors ?? '',
               )
               sendTurn({
@@ -1376,13 +1376,13 @@ wss.on('connection', (socket) => {
                 .filter((s) => s.status !== 'needs-auth' && s.status !== 'failed')
                 .map((s) => s.name)
               send({ type: 'ready', servers: usable })
-              console.log(`[jarvis] ${usable.length} MCP servers available`)
+              console.log(`[ultron] ${usable.length} MCP servers available`)
             }
             break
         }
       }
     } catch (err) {
-      console.error('[jarvis] session error:', err)
+      console.error('[ultron] session error:', err)
       send({ type: 'error', message: String(err?.message ?? err) })
       // The stream is finished either way — nothing will ever be read from it
       // again. Leaving the socket open would leave the client believing it has
@@ -1455,7 +1455,7 @@ wss.on('connection', (socket) => {
   })
 
   socket.on('close', () => {
-    console.log('[jarvis] client disconnected')
+    console.log('[ultron] client disconnected')
     closed = true
     deliver?.(null)
     session.close?.()
