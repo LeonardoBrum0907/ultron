@@ -144,6 +144,21 @@ function DecodeText({ text }: { text: string }) {
   )
 }
 
+/*
+ * The only things on screen that follow the mic level, which changes sixty
+ * times a second. They subscribe on their own so the rest of the HUD does not
+ * reconcile every frame for a number it never reads.
+ */
+function MeterFill() {
+  const level = useStore((s) => s.level)
+  return <div className="meter-fill" style={{ height: `${level * 100}%` }} />
+}
+
+function MeterValue() {
+  const pct = useStore((s) => Math.round(s.level * 100))
+  return <div className="rail-item mono">{String(pct).padStart(3, '0')}%</div>
+}
+
 /* --------------------------------------------------------------------- hud */
 
 export function Hud() {
@@ -153,7 +168,6 @@ export function Hud() {
   const activeTool = useStore((s) => s.activeTool)
   const connected = useStore((s) => s.connected)
   const error = useStore((s) => s.error)
-  const level = useStore((s) => s.level)
   const voice = useStore((s) => s.voice)
   const bootNote = useStore((s) => s.bootNote)
   const gestures = useStore((s) => s.gestures)
@@ -229,9 +243,9 @@ export function Hud() {
       <aside className="rail rail-right">
         <div className="rail-title">SIGNAL</div>
         <div className="meter">
-          <div className="meter-fill" style={{ height: `${level * 100}%` }} />
+          <MeterFill />
         </div>
-        <div className="rail-item mono">{(level * 100).toFixed(0).padStart(3, '0')}%</div>
+        <MeterValue />
       </aside>
 
       <AnimatePresence>

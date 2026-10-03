@@ -5,9 +5,7 @@ import {
   Bloom,
   ChromaticAberration,
   Vignette,
-  Noise,
 } from '@react-three/postprocessing'
-import { BlendFunction } from 'postprocessing'
 import * as THREE from 'three'
 import { Core } from './Core'
 import { Particles } from './Particles'
@@ -197,8 +195,8 @@ export function Scene() {
     <Canvas
       className="scene"
       camera={{ position: [0, 0, 6.2], fov: 45 }}
-      gl={{ antialias: true, alpha: true }}
-      dpr={[1, 2]}
+      gl={{ antialias: false, alpha: true, powerPreference: 'high-performance' }}
+      dpr={[1, 1.5]}
     >
       <Rig />
       {/*
@@ -225,6 +223,7 @@ export function Scene() {
           luminanceThreshold={0.22}
           luminanceSmoothing={0.85}
           mipmapBlur
+          levels={5}
           radius={0.72}
         />
         <ChromaticAberration
@@ -232,7 +231,6 @@ export function Scene() {
           radialModulation={false}
           modulationOffset={0}
         />
-        <Noise opacity={0.035} blendFunction={BlendFunction.OVERLAY} />
         <Vignette eskil={false} offset={0.22} darkness={0.95} />
       </EffectComposer>
     </Canvas>

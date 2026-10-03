@@ -93,13 +93,25 @@ const fragment = /* glsl */ `
     // Its radius wanders on two scales, so the outline is never a clean
     // geometric circle — this dusty, breathing edge is the whole character of
     // the thing. The slow term drifts; the fine term shivers.
-    float wob   = fbm(ring * 2.6 + vec2(uPhase * 0.22, 0.0)) * 0.055;
-    float grain = fbm(ring * 9.0 - vec2(uPhase * 0.4, 0.0)) * 0.020;
+    //
+    // Every ring term is a gaussian band a few hundredths wide, so past r = 1.05
+    // (most of the quad) they are all below 1e-4 and the turbulence that
+    // positions them cannot be seen. The branch is coherent across whole
+    // regions of the screen, so skipping the fbm calls there is nearly free and
+    // saves most of the per-pixel cost.
+    bool nearRing = r < 1.05;
+    float wob   = 0.0;
+    float grain = 0.0;
+    if (nearRing) {
+      wob   = fbm(ring * 2.6 + vec2(uPhase * 0.22, 0.0)) * 0.055;
+      grain = fbm(ring * 9.0 - vec2(uPhase * 0.4, 0.0)) * 0.020;
+    }
     float R = 0.74 + wob + grain + uLevel * 0.03;
 
     // Erosion: the outer boundary is eaten away in patches, so the ring reads
     // as something luminous and unstable rather than as a drawn stroke.
-    float erode = smoothstep(-0.25, 0.35, fbm(ring * 5.0 + vec2(uPhase * 0.5, 3.0)));
+    float erode = 0.5;
+    if (nearRing) erode = smoothstep(-0.25, 0.35, fbm(ring * 5.0 + vec2(uPhase * 0.5, 3.0)));
 
     // -- style ---------------------------------------------------------------
     // Weights on the terms that already exist rather than three shaders or
@@ -131,8 +143,11 @@ const fragment = /* glsl */ `
     // Dust: a scatter of bright motes clinging to the outer edge, densest right
     // at the rim and thinning outward, so the ring dissolves into grains rather
     // than ending at a line. This is the single most reference-accurate detail.
-    float speck = fbm(ring * 46.0 + vec2(uPhase * 0.15, 11.0));
-    speck = pow(max(speck, 0.0), 3.0);
+    float speck = 0.0;
+    if (abs(r - R) < 0.25) {
+      speck = fbm(ring * 46.0 + vec2(uPhase * 0.15, 11.0));
+      speck = pow(max(speck, 0.0), 3.0);
+    }
     float dust = speck * band(r, R + 0.028, 0.055) * (1.4 + uLevel);
 
     // -- radar sweep --------------------------------------------------------
@@ -157,11 +172,14 @@ const fragment = /* glsl */ `
     // Two counter-rotating polar meshes, dense enough to read as a woven
     // membrane rather than as stripes. The counter-rotation keeps it alive
     // without ever resolving into a direction the eye can follow.
-    float m1 = (sin(a * 96.0 + uPhase * 0.6) * 0.5 + 0.5)
-             * (sin(r * 210.0) * 0.5 + 0.5);
-    float m2 = (sin(a * 60.0 - uPhase * 0.4) * 0.5 + 0.5)
-             * (sin(r * 150.0 - uPhase) * 0.5 + 0.5);
-    float mesh = mix(m1, m2, 0.5);
+    float mesh = 0.0;
+    if (r < 0.40) {
+      float m1 = (sin(a * 96.0 + uPhase * 0.6) * 0.5 + 0.5)
+               * (sin(r * 210.0) * 0.5 + 0.5);
+      float m2 = (sin(a * 60.0 - uPhase * 0.4) * 0.5 + 0.5)
+               * (sin(r * 150.0 - uPhase) * 0.5 + 0.5);
+      mesh = mix(m1, m2, 0.5);
+    }
     float core = smoothstep(0.40, 0.36, r);
     float coreTex = core * (0.04 * kWash + mesh * 0.12 * kMesh) * (0.55 + uLevel * 0.9);
     // The disc's own soft rim.

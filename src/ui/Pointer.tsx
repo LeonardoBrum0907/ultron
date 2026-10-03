@@ -70,10 +70,18 @@ export function Pointer() {
     }
 
     /** The interface's current colour, so hands are lit like everything else. */
+    // Cached for a few frames: getComputedStyle forces a style recalculation,
+    // and the accent only changes on a phase or theme change.
+    let accentCache = '#19c4c4'
+    let accentAt = 0
     const accentOf = () => {
+      const now = performance.now()
+      if (now - accentAt < 200) return accentCache
+      accentAt = now
       const hud = document.querySelector('.hud') as HTMLElement | null
       const c = hud && getComputedStyle(hud).getPropertyValue('--accent').trim()
-      return c || '#19c4c4'
+      accentCache = c || '#19c4c4'
+      return accentCache
     }
 
     const draw = () => {
