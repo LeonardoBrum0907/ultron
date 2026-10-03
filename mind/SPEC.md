@@ -287,6 +287,10 @@ sigh: {
 - **Variação:** números escritos como `[min, max]` são sorteados a cada vez que a reação toca.
 - **Olhar:** o canal `gaze` aceita alvos com nome: `focus`, `awayFromFocus`,
   `lastFocus`, `center` e `{ sweep: [de, até] }`.
+- **Deixas (`cue`):** uma trilha pode, em vez de um canal, mandar um gesto pontual que o
+  host executa sozinho: `{ cue: 'arteries.surge', at: 0.2, args: { speed: 700 } }` vira um
+  evento `cue` no momento `at`. Serve para o que não é um envelope, como a onda que sobe
+  pelas artérias ou, no futuro, um som.
 
 ### Ritmo das espontâneas
 
@@ -344,7 +348,27 @@ O total dos prelúdios respeita o teto de 2 s.
 | `curt` | irritation | Tranco: vira para você em 0,15 s | Duros (×1,6), sem flash | Quentes (+0.5) e ficam assim por 3 s |
 | `regal` | vanity | Sem pressa, em 1,0 s, queixo erguido (-0,06 rad) | Acendem por completo, devagar | Pulso amplo até o topo da cabeça |
 
-O evento `answer` leva `{ style, delay, tone }`. O `tone` vai para a voz (seção 10).
+O evento `answer` leva `{ style, preludes, delay, settle }`:
+- `delay`: quando o estilo começa;
+- `settle`: quando o host pode seguir para o listening, ambos em segundos a partir do
+  chamado.
+
+O tom para a voz (seção 10) virá no lote 3.
+
+**Como ficou implementado:**
+- **Humor usado:** o diretor responde com o humor de *antes* do chamado. Ele atende
+  entediado, e só depois o chamado cura o tédio.
+- **Peso dos estilos:** `base × e^(sharpness × Σ favoredBy × destaque)`. O destaque é
+  quanto a emoção passa de 0,35. Ultron: `sharpness 5`, `eager` com base 5.
+- **Resultado nos testes (300 chamados cada):**
+
+  | Humor | Estilos escolhidos |
+  |---|---|
+  | Calmo | ~60% `eager` |
+  | Irritado (0,9) | ~96% `curt`, sempre depois de `ignore` |
+  | Entediado (0,95) | ~94% `weary`, quase sempre depois de `sigh` |
+
+  O atraso máximo medido foi 2,00 s.
 
 ---
 
@@ -390,7 +414,16 @@ conteúdo.** Ele sempre cumpre o pedido e nunca recusa ou omite por causa do hum
 | `breath.rate`, `breath.depth` | `breathW`, `breathAmp` (por cima dos valores do dormant de hoje) |
 | `glow` | `lifeNow` |
 | `arteries.heat`, `arteries.beat` | `artHeat` (máximo com o da voz), `uArtBeat` |
-| `crumble:<região>`, `rebuild:<região>` | **Código novo no shader** (lote 2): máscaras de região em px do canvas |
+| `crumble:<região>`, `rebuild:<região>` | Shader: elipses em px do canvas (`REGIONS`), aplicadas antes do giro para acompanhar o corpo. Na instabilidade, cada partícula é lançada 14–60 px numa direção própria, gira como poeira e afunda um pouco. No autoaperfeiçoamento, a região gira 6–15° em torno do centro e se afasta 8–14 px do corpo |
+| deixa `arteries.surge` | Uma onda forte sobe pelas 4 artérias (`uArtSurge`), atravessando as placas por onde passa, e some depois do topo da cabeça |
+
+Regiões: `shoulderL/R` (125, 640), `collarL/R` (318, 565), `chestL/R` (345, 760) e
+`abdomen` (512, 930). As do lado direito são espelhadas.
+
+**O chamado no `proto/`:** a tecla **C**, o botão **2 waking** e o passo do fluxo
+**F** chamam o Ultron. A figura entra em `waking` quando o estilo começa e em
+`listening` no `settle`. A faixa larga que varria o corpo no waking saiu, e a onda nas
+artérias faz esse papel.
 
 O que o dormant faz hoje (respiração de 5 s, batimento, sonho, cabeça baixa) continua
 sendo a **base**. O `mind` só modula por cima. O "sonho" passa a ser uma reação
@@ -470,8 +503,8 @@ navegador. Por exemplo:
 
 | Lote | Conteúdo |
 |---|---|
-| **1** | Núcleo (tipos, emoções, diretor, envelopes, gerador com semente, contextos), personalidade do Ultron (emoções, estímulos, expressões), `storage-browser`, `pointer`, testes, painel e host `proto/` para os canais que já existem. Reações: `lookAway`, `watchExit`, `waitForOrders`, `sigh`, `scan`, `dream` |
-| **2** | `crumble` e `selfImprove` (regiões no shader) e as respostas ao chamado no `proto/`, com o chamado simulado por tecla |
+| **1** (feito) | Núcleo (tipos, emoções, diretor, envelopes, gerador com semente, contextos), personalidade do Ultron (emoções, estímulos, expressões), `storage-browser`, `pointer`, testes, painel e host `proto/` para os canais que já existem. Reações: `lookAway`, `watchExit`, `waitForOrders`, `sigh`, `scan`, `dream` |
+| **2** (feito) | `crumble` e `selfImprove` (regiões no shader) e as respostas ao chamado no `proto/`, com o chamado simulado por tecla |
 | **3** | Integração: `src/` (`store.phase` → contexto, wake word → `call`, reconhecimento de voz → `forbiddenName`, ferramentas → `taskDone`/`taskFailed`), `tone.ts` no prompt da persona, `storage-node` se o bridge precisar |
 
 ## 17. Pontos para você decidir

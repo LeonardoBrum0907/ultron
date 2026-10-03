@@ -2,7 +2,9 @@
 // once; spontaneous reactions are drawn at irregular times (a minimum gap plus an
 // exponential wait, so some come soon and some take minutes), weighted by the mood,
 // never the same one twice running, each kept off for its cooldown and coming back
-// gradually after it. Doing nothing is one of the options in every draw.
+// gradually after it. Doing nothing is one of the options in every draw. A call is
+// always answered, in a way the mood picks (see answer()).
+import { ACK_WITHIN, DEFAULT_ACK, MAX_DELAY, STANDS_OUT } from './config.ts'
 import { CUT_RELEASE, cutEnvelope, envelope, holdStart, smooth, spanEnd, type Span } from './envelope.ts'
 import type { Rng } from './random.ts'
 import type { Effect, Focus, GazeTarget, Personality, ReactionConfig, Track } from './types.ts'
@@ -21,6 +23,8 @@ export interface DirectorHost {
   kindOf(ch: string): 'offset' | 'gain'
   applyEffects(effects: Record<string, Effect>): void
   emit(name: string, phase: 'start' | 'end' | 'cut'): void
+  cue(name: string, args: Record<string, number | string>): void
+  answered(a: { style: string; preludes: string[]; delay: number; settle: number }): void
 }
 
 interface Played extends Span {
@@ -28,6 +32,7 @@ interface Played extends Span {
   to: number
   weight: number
   gaze?: (t: number) => { x: number; y: number }
+  cue?: { name: string; args: Record<string, number | string>; sent?: boolean }
 }
 
 interface Instance {
@@ -43,6 +48,9 @@ interface Instance {
 }
 
 const sign = (v: number) => (v < 0 ? -1 : 1)
+/** How far an emotion stands out, 0..1. */
+const excess = (v: number) => Math.max(0, Math.min(1, (v - STANDS_OUT) / (1 - STANDS_OUT)))
+const ANSWER_PRIORITY = 100
 
 export function createDirector(host: DirectorHost) {
   const { rng } = host
@@ -64,11 +72,22 @@ export function createDirector(host: DirectorHost) {
     return Math.min(rhythm.max, rhythm.minGap + rng.exp(mean))
   }
 
+  function within(requires: Record<string, [number, number]> | undefined) {
+    const v = host.visible()
+    for (const [e, [lo, hi]] of Object.entries(requires ?? {})) if ((v[e] ?? 0) < lo || (v[e] ?? 0) > hi) return false
+    return true
+  }
+
+  function chanceOf(base: number | undefined, by: Record<string, number> | undefined) {
+    let c = base ?? 1
+    for (const [e, k] of Object.entries(by ?? {})) c += k * (host.visible()[e] ?? 0)
+    return c
+  }
+
   function allowed(conf: ReactionConfig) {
     if (conf.enabled === false) return false
     if (host.freedom() < (conf.minFreedom ?? 0)) return false
-    const v = host.visible()
-    for (const [e, [lo, hi]] of Object.entries(conf.requires ?? {})) if ((v[e] ?? 0) < lo || (v[e] ?? 0) > hi) return false
+    if (!within(conf.requires)) return false
     const w = conf.when
     if (w?.focusStill != null && host.focusStill() < w.focusStill) return false
     if (w?.focusPresent != null && host.focus().present !== w.focusPresent) return false
@@ -123,8 +142,16 @@ export function createDirector(host: DirectorHost) {
     return () => p
   }
 
+  /** One track with its ranges drawn, `offset` seconds into its reaction. */
   function resolve(track: Track, offset: number, len: number, flip: number): Played | null {
-    let ch = track.ch
+    const at = offset + rng.range(track.at ?? 0)
+    if (track.cue) {
+      const args: Record<string, number | string> = {}
+      for (const [k, v] of Object.entries(track.args ?? {})) args[k] = typeof v === 'string' ? v : rng.range(v)
+      return { ch: '', at, attack: 0, hold: 0, release: 0, to: 0, weight: 0, cue: { name: track.cue, args } }
+    }
+    let ch = track.ch ?? ''
+    if (!ch) return null
     if (ch.includes('*')) {
       if (!track.pick?.length) return null
       ch = ch.replace('*', rng.pick(track.pick))
@@ -132,7 +159,7 @@ export function createDirector(host: DirectorHost) {
     const kind = ch === 'gaze' ? 'offset' : host.kindOf(ch)
     const played: Played = {
       ch,
-      at: offset + rng.range(track.at ?? 0),
+      at,
       attack: rng.range(track.attack ?? 0.3),
       hold: track.hold === 'len' ? len : rng.range(track.hold ?? 0),
       release: rng.range(track.release ?? 0.5),
@@ -143,17 +170,72 @@ export function createDirector(host: DirectorHost) {
     return played
   }
 
-  function play(name: string, conf: ReactionConfig, priority: number) {
+  const resolveAll = (tracks: Track[], offset: number, len: number, flip = 1) =>
+    tracks.map((t) => resolve(t, offset, len, flip)).filter((t): t is Played => !!t)
+
+  function begin(name: string, conf: ReactionConfig, priority: number, tracks: Played[], main: Played[]) {
     if (active) cut(active)
-    const flip = conf.mirror && rng.next() < 0.5 ? -1 : 1
-    const len = rng.range(conf.len ?? 0)
-    const warnFor = conf.warn ? rng.range(conf.warn.for) : 0
-    const warn = (conf.warn?.does ?? []).map((t) => resolve(t, 0, len, flip)).filter((t): t is Played => !!t)
-    const main = conf.does.map((t) => resolve(t, warnFor, len, flip)).filter((t): t is Played => !!t)
-    active = { name, conf, start: host.now(), priority, tracks: [...warn, ...main], main }
+    active = { name, conf, start: host.now(), priority, tracks, main }
     lastPlayed[name] = host.now()
     if (conf.kind === 'spontaneous') lastSpontaneous = name
     host.emit(name, 'start')
+    sendCues(active)
+  }
+
+  function play(name: string, conf: ReactionConfig, priority: number) {
+    const flip = conf.mirror && rng.next() < 0.5 ? -1 : 1
+    const len = rng.range(conf.len ?? 0)
+    const warnFor = conf.warn ? rng.range(conf.warn.for) : 0
+    const warn = resolveAll(conf.warn?.does ?? [], 0, len, flip)
+    const main = resolveAll(conf.does, warnFor, len, flip)
+    begin(name, conf, priority, [...warn, ...main], main)
+  }
+
+  /**
+   * Answer a call. The acknowledgement plays at once; then the preludes that come up
+   * (each by its conditions and chance), in order, squeezed into the allowed delay; then
+   * one style, drawn by how much each favouring emotion stands out, so the dominant mood
+   * nearly always wins but not always.
+   */
+  function answer() {
+    const a = host.config().answer
+    if (!a) return false
+    const v = host.visible()
+    const ack = resolveAll(a.ack ?? DEFAULT_ACK, 0, 0)
+    for (const t of ack) t.at = Math.min(t.at, ACK_WITHIN)
+
+    const preludes: { name: string; dur: number; does: Track[] }[] = []
+    for (const [name, p] of Object.entries(a.preludes)) {
+      if (!within(p.requires) || rng.next() >= chanceOf(p.chance, p.chanceBy)) continue
+      let dur = rng.range(p.for)
+      for (const [e, k] of Object.entries(p.forBy ?? {})) dur += k * (v[e] ?? 0)
+      preludes.push({ name, dur: Math.max(0, dur), does: p.does })
+    }
+    const cap = Math.min(a.maxDelay ?? MAX_DELAY, MAX_DELAY)
+    const total = preludes.reduce((s, p) => s + p.dur, 0)
+    const squeeze = total > cap ? cap / total : 1
+    const tracks = [...ack]
+    let delay = 0
+    for (const p of preludes) {
+      p.dur *= squeeze
+      tracks.push(...resolveAll(p.does, delay, p.dur))
+      delay += p.dur
+    }
+
+    const sharp = a.sharpness ?? 4
+    const styles = Object.entries(a.styles).map(([name, s]) => {
+      let lean = 0
+      for (const [e, k] of Object.entries(s.favoredBy ?? {})) lean += k * excess(v[e] ?? 0)
+      return [name, s, (s.base ?? 1) * Math.exp(sharp * lean)] as const
+    })
+    let r = rng.next() * styles.reduce((s, x) => s + x[2], 0)
+    const [style, conf] = styles.find((x) => (r -= x[2]) < 0) ?? styles[styles.length - 1]
+    const main = resolveAll(conf.does, delay, rng.range(conf.len ?? 0))
+    tracks.push(...main)
+
+    begin(`answer:${style}`, { kind: 'reflex', does: [] }, ANSWER_PRIORITY, tracks, main)
+    host.answered({ style, preludes: preludes.map((p) => p.name), delay, settle: delay + rng.range(conf.settle) })
+    return true
   }
 
   function cut(inst: Instance) {
@@ -164,6 +246,15 @@ export function createDirector(host: DirectorHost) {
     host.emit(inst.name, 'cut')
   }
 
+  /** Cues whose time has come (a cut reaction sends no more). */
+  function sendCues(inst: Instance) {
+    const t = host.now() - inst.start
+    for (const tr of inst.tracks) if (tr.cue && !tr.cue.sent && t >= tr.at) {
+      tr.cue.sent = true
+      host.cue(tr.cue.name, tr.cue.args)
+    }
+  }
+
   const length = (inst: Instance) => (inst.cutAt != null ? inst.cutAt + CUT_RELEASE : Math.max(0, ...inst.tracks.map(spanEnd)))
 
   function draw() {
@@ -171,10 +262,9 @@ export function createDirector(host: DirectorHost) {
     const options: [string, ReactionConfig, number][] = []
     for (const [name, conf] of reactions()) {
       if (conf.kind !== 'spontaneous' || name === lastSpontaneous || !allowed(conf)) continue
-      let w = conf.base ?? 1
       let favor = 1
       for (const [e, k] of Object.entries(conf.favoredBy ?? {})) favor += k * (v[e] ?? 0)
-      w *= favor * readiness(name, conf)
+      const w = (conf.base ?? 1) * favor * readiness(name, conf)
       if (w > 0) options.push([name, conf, w])
     }
     if (!options.length) return
@@ -193,6 +283,7 @@ export function createDirector(host: DirectorHost) {
         nextAt = now + wait()
         scheduled = true
       }
+      if (active) sendCues(active)
       if (active && now - active.start >= length(active)) {
         if (active.conf.after) host.applyEffects(active.conf.after)
         host.emit(active.name, 'end')
@@ -211,9 +302,10 @@ export function createDirector(host: DirectorHost) {
       }
     },
 
-    /** A stimulus arrived: end a held part that waits for it, then maybe answer it. */
+    /** A stimulus arrived: a call is answered; otherwise end a hold that waits for it, then maybe react. */
     stimulus(name: string) {
       if (host.paused()) return
+      if (host.config().answer?.on === name && answer()) return
       const now = host.now()
       const u = active?.conf.until
       if (active && u && u.stimulus === name && !active.untilSeen) {
@@ -232,9 +324,7 @@ export function createDirector(host: DirectorHost) {
         const p = conf.priority ?? 2
         if (active && active.priority >= p) continue
         if (best && best[2] >= p) continue
-        let chance = conf.chance ?? 1
-        for (const [e, k] of Object.entries(conf.chanceBy ?? {})) chance += k * (host.visible()[e] ?? 0)
-        if (rng.next() < chance) best = [rn, conf, p]
+        if (rng.next() < chanceOf(conf.chance, conf.chanceBy)) best = [rn, conf, p]
       }
       if (best) play(best[0], best[1], best[2])
     },
@@ -253,6 +343,7 @@ export function createDirector(host: DirectorHost) {
       for (const inst of active ? [...fading, active] : fading) {
         const t = now - inst.start
         for (const tr of inst.tracks) {
+          if (tr.cue) continue
           const e = inst.cutAt != null ? cutEnvelope(tr, t, inst.cutAt) : envelope(tr, t)
           if (e <= 0) continue
           if (tr.gaze) {

@@ -2,7 +2,7 @@
 // happens (stimulate) and what it perceives (sense), advances it (tick) and reads back
 // the body channels and the mood (output). It never calls the host, keeps no clock of
 // its own and draws every random number from its seed.
-import { CHANNELS, clone, merge } from './config.ts'
+import { CHANNELS, STANDS_OUT, clone, merge } from './config.ts'
 import { createDirector } from './director.ts'
 import { applyEffect, fadeEmotion, stepEmotion, visible, type EmotionState } from './emotions.ts'
 import { createRng } from './random.ts'
@@ -17,7 +17,6 @@ export interface MindOptions {
 
 const THRESHOLD = /^(rise|fall):([\w-]+):([\d.]+)$/
 const HYSTERESIS = 0.05
-const DOMINANT_ABOVE = 0.35
 
 export function createMind(personality: Personality, options: MindOptions = {}) {
   const defaults = clone(personality)
@@ -90,6 +89,8 @@ export function createMind(personality: Personality, options: MindOptions = {}) 
     kindOf,
     applyEffects: (e) => applyEffects(e),
     emit: (name, phase) => emit({ type: 'reaction', t, name, phase }),
+    cue: (name, args) => emit({ type: 'cue', t, name, args }),
+    answered: (a) => emit({ type: 'answer', t, ...a }),
   })
 
   /** The emotions' own life over dt seconds: drives, settling, memory. */
@@ -112,6 +113,9 @@ export function createMind(personality: Personality, options: MindOptions = {}) 
     if (conf?.interaction) lastInteraction = t
     if (paused()) return
     emit({ type: 'stimulus', t, name, payload })
+    // It reacts with the mood it was in when this happened (a call is answered bored,
+    // then the call cures the boredom), and only then does the stimulus move it.
+    director.stimulus(name)
     if (conf) {
       const s = conf.scale ? Number(payload?.[conf.scale] ?? 1) : 1
       const scale = s * config.temper.volatility
@@ -119,7 +123,6 @@ export function createMind(personality: Personality, options: MindOptions = {}) 
       if (conf.again && lastStim[name] != null && t - lastStim[name] < conf.again.within) applyEffects(conf.again.effects, scale)
     }
     lastStim[name] = t
-    director.stimulus(name)
   }
 
   syncEmotions()
@@ -195,7 +198,7 @@ export function createMind(personality: Personality, options: MindOptions = {}) 
       for (const [ch, kind] of Object.entries({ ...CHANNELS, ...config.channels })) if (!ch.includes('*')) channels[ch] = kind === 'gain' ? 1 : 0
       Object.assign(channels, offsets, gains)
       let dominant = 'neutral'
-      let top = DOMINANT_ABOVE
+      let top = STANDS_OUT
       for (const [name, val] of Object.entries(v))
         if (val > top) {
           top = val

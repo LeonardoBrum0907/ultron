@@ -1,5 +1,13 @@
 // The body's vocabulary, and the small tools for editing a personality live.
-import type { ChannelKind } from './types.ts'
+import type { ChannelKind, Track } from './types.ts'
+
+/** An emotion stands out (is dominant, favours a style) only above this. */
+export const STANDS_OUT = 0.35
+
+/** The promises to the user when it is called, whatever the personality says. */
+export const ACK_WITHIN = 0.2 // s: some sign that it heard
+export const MAX_DELAY = 2 // s: the answer itself has begun
+export const DEFAULT_ACK: Track[] = [{ ch: 'eyes.boost', to: 0.35, attack: 0.05, hold: 0.08, release: 0.2 }]
 
 /**
  * The channels every host can expect. A host maps the ones it has and ignores the rest.

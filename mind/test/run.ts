@@ -99,6 +99,56 @@ function setup(seed = 1, context = 'dormant') {
   check('cursor left: watchExit plays', starts('watchExit').length === 1)
 }
 
+// Answering a call: the style follows the mood, always within the promises.
+{
+  type Answer = Extract<MindEvent, { type: 'answer' }>
+  /** Call 300 fresh minds in this mood; count the styles, and check every promise on each. */
+  function calls(mood: Record<string, number>) {
+    const styles: Record<string, number> = {}
+    let preludes = 0
+    let late = 0
+    let unheard = 0
+    let maxDelay = 0
+    for (let seed = 1; seed <= 300; seed++) {
+      const { mind, run, log } = setup(seed)
+      run(1)
+      for (const [e, v] of Object.entries(mood)) mind.setEmotion(e, v)
+      mind.stimulate('call')
+      const a = log.find((e): e is Answer => e.type === 'answer')
+      if (!a) continue
+      styles[a.style] = (styles[a.style] ?? 0) + 1
+      if (a.preludes.length) preludes++
+      if (a.delay > 2 + 1e-9) late++
+      maxDelay = Math.max(maxDelay, a.delay)
+      run(0.15)
+      if (mind.channel(mind.output(), 'eyes.boost') <= 0) unheard++
+    }
+    return { styles, preludes, late, unheard, maxDelay }
+  }
+  const share = (r: ReturnType<typeof calls>, s: string) => (r.styles[s] ?? 0) / 300
+
+  const calm = calls({})
+  check('calm: mostly eager', share(calm, 'eager') > 0.4, JSON.stringify(calm.styles))
+  const cross = calls({ irritation: 0.9 })
+  check('irritated: mostly curt, made to wait', share(cross, 'curt') > 0.7 && cross.preludes > 250, `${JSON.stringify(cross.styles)}, waited ${cross.preludes}/300`)
+  const bored = calls({ boredom: 0.95 })
+  check('bored: mostly weary, often a sigh first', share(bored, 'weary') > 0.6 && bored.preludes > 200, `${JSON.stringify(bored.styles)}, sighed ${bored.preludes}/300`)
+  const both = calls({ boredom: 1, irritation: 1 })
+  check('every promise kept: answered within 2 s', [calm, cross, bored, both].every((r) => r.late === 0), `longest wait ${both.maxDelay.toFixed(2)} s`)
+  check('every promise kept: a sign of hearing within 0.2 s', [calm, cross, bored, both].every((r) => r.unheard === 0))
+
+  const { mind, run, log } = setup(4)
+  run(1)
+  mind.stimulate('call')
+  const a = log.find((e): e is Answer => e.type === 'answer')!
+  run(a.delay + 0.1)
+  check('the answer sends its cue when it starts', log.some((e) => e.type === 'cue' && e.name === 'arteries.surge'))
+
+  const off = setup(4, 'offline')
+  off.mind.stimulate('call')
+  check('offline: no answer (the host boots it instead)', !off.log.some((e) => e.type === 'answer'))
+}
+
 // Same seed, same life.
 {
   const a = setup(11)

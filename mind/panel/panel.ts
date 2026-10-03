@@ -200,7 +200,16 @@ export function createPanel(mind: Mind, { key = 'e', open = false }: PanelOption
   const lines: string[] = []
   mind.on((e: MindEvent) => {
     const t = e.t.toFixed(1).padStart(7)
-    const line = e.type === 'stimulus' ? `${t}  · ${e.name}` : e.type === 'reaction' ? `${t}  ${e.phase === 'start' ? '▶' : e.phase === 'end' ? '■' : '✕'} ${e.name}` : `${t}  ⇢ ${e.name}`
+    const line =
+      e.type === 'stimulus'
+        ? `${t}  · ${e.name}`
+        : e.type === 'reaction'
+          ? `${t}  ${e.phase === 'start' ? '▶' : e.phase === 'end' ? '■' : '✕'} ${e.name}`
+          : e.type === 'answer'
+            ? `${t}  ⟵ ${e.style}${e.preludes.length ? ` after ${e.preludes.join('+')}` : ''} (+${e.delay.toFixed(1)}s)`
+            : e.type === 'cue'
+              ? `${t}    ✦ ${e.name}`
+              : `${t}  ⇢ ${e.name}`
     if (e.type === 'stimulus' && e.name === 'interaction') return
     lines.unshift(line)
     lines.length = Math.min(lines.length, 12)

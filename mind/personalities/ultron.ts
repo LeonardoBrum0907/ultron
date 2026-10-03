@@ -148,6 +148,46 @@ export const ultron: Personality = {
       after: { boredom: -0.05 },
     },
 
+    // 8. Instability: the eyes stutter, then a part of the body crumbles to dust and is
+    // yanked back into place, the arteries flaring with the effort.
+    crumble: {
+      kind: 'spontaneous',
+      minFreedom: 0.8,
+      requires: { irritation: [0.3, 1] },
+      favoredBy: { irritation: 2 },
+      cooldown: 180,
+      len: [0.6, 1.2],
+      warn: { for: [0.3, 0.6], does: [{ ch: 'eyes.flicker', to: 0.7, attack: 0.05, hold: 0.35, release: 0.1 }] },
+      does: [
+        { ch: 'crumble:*', pick: ['shoulderL', 'shoulderR', 'chestL', 'chestR', 'collarL', 'collarR'], to: [0.5, 0.9], attack: 0.15, hold: 'len', release: 0.35 },
+        { ch: 'eyes.flicker', to: 0.5, attack: 0.1, hold: 'len', release: 0.2 },
+        { ch: 'arteries.heat', to: 0.4, attack: 0.15, hold: 'len', release: 0.8 },
+      ],
+      after: { irritation: -0.2 },
+    },
+
+    // 9. Self-improvement: a plate lifts off, turns, and seats itself again, a little
+    // better than before.
+    selfImprove: {
+      kind: 'spontaneous',
+      minFreedom: 0.8,
+      requires: { irritation: [0, 0.4] },
+      favoredBy: { vanity: 1.5 },
+      cooldown: 150,
+      does: [
+        {
+          ch: 'rebuild:*',
+          pick: ['shoulderL', 'shoulderR', 'chestL', 'chestR', 'collarL', 'collarR', 'abdomen'],
+          to: 1,
+          attack: [0.5, 0.8],
+          hold: [0.3, 0.7],
+          release: [0.6, 1],
+        },
+        { ch: 'eyes.gain', to: 1.15, attack: 0.5, hold: 0.5, release: 1 },
+      ],
+      after: { vanity: 0.1 },
+    },
+
     // The eyes stir for a third of a second, as if in a dream.
     dream: {
       kind: 'spontaneous',
@@ -156,6 +196,88 @@ export const ultron: Personality = {
       when: { focusStill: 3 },
       cooldown: 20,
       does: [{ ch: 'eyes.boost', to: 0.5, attack: 0.12, hold: 0.1, release: 0.15 }],
+    },
+  },
+
+  // A call is always answered; how depends on the mood. The 'arteries.surge' cue sends one
+  // strong pulse up all four arteries (speed px/s, strength), and the eye flash is timed
+  // to when it reaches the cheeks.
+  answer: {
+    on: 'call',
+    ack: [
+      { ch: 'eyes.boost', to: 0.35, attack: 0.05, hold: 0.08, release: 0.2 },
+      { ch: 'eyes.flicker', to: 0.6, attack: 0.03, hold: 0.12, release: 0.15 },
+    ],
+    maxDelay: 2,
+    sharpness: 5,
+    preludes: {
+      // Bored: a short sigh first.
+      sigh: {
+        requires: { boredom: [0.5, 1] },
+        chance: 0,
+        chanceBy: { boredom: 1 },
+        for: [0.6, 1],
+        does: [
+          { ch: 'body.rise', to: [0.6, 0.8], attack: 0.3, hold: 0.1, release: 0.6 },
+          { ch: 'glow', to: 0.85, at: 0.3, attack: 0.3, hold: 0.1, release: 0.5 },
+        ],
+      },
+      // Irritated: it heard you (the eyes flicker) and makes you wait, perfectly still.
+      ignore: {
+        requires: { irritation: [0.4, 1] },
+        for: 0.6,
+        forBy: { irritation: 1 },
+        does: [
+          { ch: 'head.follow', to: 0.05, attack: 0.05, hold: 'len', release: 0.1 },
+          { ch: 'arteries.heat', to: 0.25, attack: 0.3, hold: 'len', release: 0.3 },
+        ],
+      },
+    },
+    styles: {
+      // Neutral: up at once, the pulse runs up, the eyes flash as it arrives.
+      eager: {
+        base: 5,
+        settle: 1.2,
+        does: [
+          { cue: 'arteries.surge', args: { speed: 1100, strength: 1 } },
+          { ch: 'head.follow', to: 1.6, attack: 0.1, hold: 0.6, release: 0.5 },
+          { ch: 'eyes.boost', to: 1.2, at: 0.4, attack: 0.06, hold: 0.08, release: 0.6 },
+        ],
+      },
+      // Bored: slow to lift its head, the light and the eyes coming up gradually.
+      weary: {
+        favoredBy: { boredom: 1 },
+        settle: 1.8,
+        does: [
+          { ch: 'head.follow', to: 0.35, attack: 0.1, hold: 1.4, release: 0.6 },
+          { ch: 'glow', to: 0.75, attack: 0.05, hold: 0.2, release: 1.4 },
+          { ch: 'eyes.gain', to: 0.4, attack: 0.05, hold: 0.2, release: 1.4 },
+          { cue: 'arteries.surge', at: 0.3, args: { speed: 550, strength: 0.6 } },
+        ],
+      },
+      // Irritated: a snap of the head toward you, hard eyes, the arteries running hot.
+      curt: {
+        favoredBy: { irritation: 1 },
+        settle: 0.8,
+        does: [
+          { cue: 'arteries.surge', args: { speed: 1700, strength: 1.3 } },
+          { ch: 'head.follow', to: 5, attack: 0.03, hold: 0.5, release: 0.6 },
+          { ch: 'eyes.gain', to: 1.6, attack: 0.1, hold: 2.5, release: 1 },
+          { ch: 'arteries.heat', to: 0.5, attack: 0.15, hold: 3, release: 1.5 },
+        ],
+      },
+      // Vain: unhurried and majestic, chin up, the eyes lighting fully, as if granting an audience.
+      regal: {
+        favoredBy: { vanity: 1 },
+        settle: 1.8,
+        does: [
+          { ch: 'head.follow', to: 0.5, attack: 0.1, hold: 1.4, release: 0.6 },
+          { ch: 'head.pitch', to: -0.06, attack: 1, hold: 2.5, release: 1.5 },
+          { ch: 'glow', to: 1.1, attack: 1, hold: 1, release: 1 },
+          { ch: 'eyes.boost', to: 0.9, at: 0.5, attack: 0.5, hold: 0.4, release: 1 },
+          { cue: 'arteries.surge', at: 0.2, args: { speed: 700, strength: 1.1 } },
+        ],
+      },
     },
   },
 

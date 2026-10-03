@@ -78,7 +78,13 @@ export type GazeTarget =
 
 export interface Track {
   /** Channel name. 'gaze' takes `target` instead of `to`. A '*' is replaced by one of `pick`. */
-  ch: string
+  ch?: string
+  /**
+   * Instead of a channel: a one-off gesture the host performs itself (a surge up the
+   * arteries, a sound), sent as a 'cue' event at `at` with `args` (ranges drawn).
+   */
+  cue?: string
+  args?: Record<string, Range | string>
   /** The value at the peak (an offset, or a gain factor). */
   to?: Range
   target?: GazeTarget
@@ -128,6 +134,47 @@ export interface ReactionConfig {
   after?: Record<string, Effect>
 }
 
+/** Something it may do before it answers a call (it can sigh, it can make you wait). */
+export interface PreludeConfig {
+  requires?: Record<string, [number, number]>
+  /** Probability, plus chanceBy[e] * emotion. */
+  chance?: number
+  chanceBy?: Record<string, number>
+  /** Seconds it lasts, plus forBy[e] * emotion. Tracks may hold for it with hold: 'len'. */
+  for: Range
+  forBy?: Record<string, number>
+  does: Track[]
+}
+
+/** One way of answering. */
+export interface StyleConfig {
+  base?: number
+  /** Emotions that make this style likely (by how far they stand out). */
+  favoredBy?: Record<string, number>
+  /** Seconds from its start until the host may move on (to listening). */
+  settle: Range
+  len?: Range
+  does: Track[]
+}
+
+/**
+ * How it answers a call. It always does: the acknowledgement plays within 0.2 s, the
+ * 'answer' event goes out at once (so the host can start listening), and whatever the
+ * preludes, the answer itself starts within 2 s. Everything else follows the mood.
+ */
+export interface AnswerConfig {
+  /** The stimulus that is a call. */
+  on: string
+  ack?: Track[]
+  /** Seconds the preludes may take in all, at most 2. */
+  maxDelay?: number
+  /** How surely the mood picks the style (0: any style as likely as its base). */
+  sharpness?: number
+  /** Played in this order, each if it comes up. */
+  preludes: Record<string, PreludeConfig>
+  styles: Record<string, StyleConfig>
+}
+
 export interface Rhythm {
   /** Seconds at least between two spontaneous reactions. */
   minGap: number
@@ -154,6 +201,7 @@ export interface Personality {
   rhythm: Rhythm
   expressions: Expression[]
   reactions: Record<string, ReactionConfig>
+  answer?: AnswerConfig
   /** Extra channels, or other kinds for known ones. */
   channels?: Record<string, ChannelKind>
   /**
@@ -202,3 +250,6 @@ export type MindEvent =
   | { type: 'stimulus'; t: number; name: string; payload?: Record<string, unknown> }
   | { type: 'reaction'; t: number; name: string; phase: 'start' | 'end' | 'cut' }
   | { type: 'context'; t: number; name: string }
+  | { type: 'cue'; t: number; name: string; args: Record<string, number | string> }
+  /** A call answered: the style, the preludes before it, when it starts and when it settles (s from now). */
+  | { type: 'answer'; t: number; style: string; preludes: string[]; delay: number; settle: number }
