@@ -1,0 +1,19 @@
+{
+  "W": 1024,
+  "H": 1100,
+  "BW": 2048,
+  "BH": 760,
+  "face": {
+    "cx": 512,
+    "cy": 436,
+    "sx": 98,
+    "sy": 118
+  },
+  "states": [
+    "idle",
+    "listening",
+    "thinking",
+    "speaking",
+    "strong"
+  ]
+}

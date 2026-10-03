@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ULTRON — particle prototype</title>
+    <style>
+      :root {
+        --cyan: #19ddff;
+        --amber: #ffb54d;
+        --ink: #02080b;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        color: var(--cyan);
+        font-family: 'Share Tech Mono', Consolas, 'Courier New', monospace;
+        overflow: hidden;
+      }
+      canvas#gl {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .hud { position: fixed; pointer-events: none; letter-spacing: 0.16em; text-transform: uppercase; }
+      .title { top: 22px; left: 28px; font-size: 22px; letter-spacing: 0.5em; opacity: 0.9; }
+      .title small { display: block; margin-top: 8px; font-size: 10px; letter-spacing: 0.3em; opacity: 0.45; }
+      .status { top: 26px; right: 28px; text-align: right; font-size: 11px; opacity: 0.8; }
+      .status b { color: var(--amber); font-weight: normal; }
+      .stats { top: 54px; right: 28px; text-align: right; font-size: 10px; opacity: 0.4; line-height: 1.7; }
+      .boot {
+        left: 28px; top: 96px; font-size: 11px; line-height: 1.9; opacity: 0.75;
+        transition: opacity 1.2s ease;
+      }
+      .boot .ok { color: var(--amber); }
+      .boot.gone { opacity: 0; }
+      .bar {
+        position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+        display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
+        width: max-content; max-width: calc(100vw - 24px);
+      }
+      .bar button {
+        font: inherit; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+        color: var(--cyan); background: rgba(2, 18, 24, 0.72);
+        border: 1px solid rgba(25, 221, 255, 0.28); border-radius: 6px;
+        padding: 7px 10px; cursor: pointer;
+      }
+      .bar button:hover { border-color: var(--cyan); }
+      .bar button.on { background: rgba(25, 221, 255, 0.16); border-color: var(--cyan); color: #fff; }
+      .bar .sep { width: 12px; }
+      .bar .accent { color: var(--amber); border-color: rgba(255, 181, 77, 0.35); }
+      .hint { bottom: 62px; left: 0; right: 0; text-align: center; font-size: 10px; opacity: 0.32; }
+      .wake { bottom: 15%; left: 0; right: 0; text-align: center; font-size: 13px; letter-spacing: 0.5em; opacity: 0; }
+      .bar button.on.accent { background: rgba(255, 181, 77, 0.16); color: #fff; }
+      #err { position: fixed; inset: 0; display: none; place-items: center; text-align: center; color: #ff8a65; padding: 40px; }
+    </style>
+  </head>
+  <body>
+    <canvas id="gl"></canvas>
+
+    <div class="hud title">U.L.T.R.O.N.<small>particle prototype</small></div>
+    <div class="hud status">status: <b id="status">booting</b></div>
+    <div class="hud stats" id="stats"></div>
+    <div class="hud boot" id="boot"></div>
+    <div class="hud wake" id="wake">click to wake</div>
+    <div class="hud hint">the head follows the cursor · click sends a pulse of light through the figure · move the mouse through the dust when offline · keys 0–6 switch state · B boots a new one · R repeats the last boot · F plays the whole flow · P swaps the palette</div>
+
+    <div class="bar" id="bar">
+      <button data-s="offline" class="on">0 offline</button>
+      <button data-s="boot">B boot</button>
+      <button data-s="dormant">1 dormant</button>
+      <button data-s="waking">2 waking</button>
+      <button data-s="listening">3 listening</button>
+      <button data-s="thinking">4 thinking</button>
+      <button data-s="tooling">5 tooling</button>
+      <button data-s="speaking">6 speaking</button>
+      <span class="sep"></span>
+      <button id="again" class="accent">R repeat boot</button>
+      <button id="flow" class="accent">F flow</button>
+      <button id="palette" class="accent">P cyan + red</button>
+    </div>
+
+    <div id="err"></div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
