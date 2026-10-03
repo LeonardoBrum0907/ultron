@@ -172,6 +172,11 @@ const vert = /* glsl */ `
   uniform float uArtPhase;  // px the arteries' pulses have travelled
   uniform vec3  uArtBeat;   // the sleeping heartbeat: x px its front has gone from the ports, y how strong it is, z how much of the steady flow is left (0 asleep)
   uniform float uBreath;    // px the figure has risen as it breathes in (negative breathing out)
+  uniform vec3  uArtSurge;  // one strong pulse up all four arteries: x px its front has gone, y strength
+  uniform vec4  uCrumbleAt; // the region crumbling to dust: centre and radii, image px
+  uniform float uCrumble;   // how far it has gone to dust, 0..1
+  uniform vec4  uRebuildAt; // the plate lifting off and re-seating: centre and radii, image px
+  uniform vec3  uRebuild;   // x how far off it is 0..1, y px it lifts, z rad it turns
   uniform float uParallax;
   uniform float uRed;       // 0 cyan, 1 everything that was cyan goes red
   uniform float uLife;      // brightness of the layer: low when dormant
@@ -280,6 +285,31 @@ const vert = /* glsl */ `
     p += vec2(sin(uTime * (0.4 + aSeed * 0.9) + ph * 3.0), cos(uTime * (0.5 + aSeed * 0.7) + ph * 5.0)) * aJit * uLoose * e;
     // The whole figure breathes.
     p.y -= uBreath * e;
+
+    // THE MIND'S GESTURES on one region of the body (soft ellipses in image px, see
+    // REGIONS), before the turn so the region moves with the body it belongs to.
+    // Crumbling: every particle in it is flung out a different way and sinks a little, a
+    // swirl of dust, flickering; it is pulled back as the amount falls. Rebuilding: the
+    // region turns about its middle and lifts away from the body, then seats again.
+    float gestureLight = 1.0;
+    if (uFloat > 0.5 && uCrumble > 0.001) {
+      float m = 1.0 - smoothstep(0.6, 1.0, length((aTarget - uCrumbleAt.xy) / uCrumbleAt.zw));
+      float a = uCrumble * m * e;
+      float ang = aSeed * 18.85;
+      p += vec2(cos(ang), sin(ang)) * (14.0 + 46.0 * fract(aSeed * 7.31)) * a;
+      p += vec2(sin(uFreeTime * (1.3 + aSeed) + ph), cos(uFreeTime * (1.1 + aSeed) + ph * 2.0)) * 6.0 * a + vec2(0.0, 22.0 * a * a);
+      gestureLight = mix(1.0, 0.45 + 0.9 * fract(aSeed * 3.7) * (0.6 + 0.4 * sin(uFreeTime * 9.0 + ph * 4.0)), a);
+    }
+    if (uFloat > 0.5 && uRebuild.x > 0.001) {
+      vec2 rel = aTarget - uRebuildAt.xy;
+      float m = 1.0 - smoothstep(0.75, 1.0, length(rel / uRebuildAt.zw));
+      float a = uRebuild.x * m * e;
+      float an = uRebuild.z * a;
+      vec2 turned = vec2(rel.x * cos(an) - rel.y * sin(an), rel.x * sin(an) + rel.y * cos(an));
+      vec2 away = normalize(uRebuildAt.xy - vec2(${CX.toFixed(1)}, 700.0) + vec2(0.0, 0.001));
+      p += (turned - rel) + away * uRebuild.y * a;
+      gestureLight *= 1.0 + 0.5 * a; // the loose plate catches the light
+    }
     vec2 pRest = p; // before the head and the trunk turn
 
     // looseness: 1 while a particle is dust in the cloud, 0 once it is part of the figure.
@@ -467,7 +497,8 @@ const vert = /* glsl */ `
     // the eye only at high intensity. Pulses leave the sources 260 px apart (uArtPhase runs
     // faster with heat, on the figure's own clock) and run up all four; the sources flare
     // as one sets off. Asleep the steady flow stops and only a weak heartbeat is left: one
-    // pulse a breath, leaving the ports and dying out by the neck.
+    // pulse a breath, leaving the ports and dying out by the neck. Answering a call, one
+    // strong surge runs the whole way up, shining through the plates where it passes.
     float artLight = 1.0;
     if (uArt > 0.5) {
       float k = (aArt.x - uArtPhase) / 260.0;
@@ -476,7 +507,10 @@ const vert = /* glsl */ `
       float flow = mix(0.5, aArt.y < 0.5 ? 0.75 + 0.6 * beat : 0.5 + 1.1 * band, uArtBeat.z);
       float hz = (aArt.x - uArtBeat.x) / 26.0;
       flow += 2.4 * uArtBeat.y * exp(-hz * hz) * exp(-aArt.x / 120.0);
-      float through = mix(0.06, 0.65, uArtHeat);
+      float sz = (aArt.x - uArtSurge.x) / 45.0;
+      float surge = uArtSurge.y * exp(-sz * sz);
+      flow += 3.0 * surge;
+      float through = mix(mix(0.06, 0.65, uArtHeat), 0.95, min(1.0, surge));
       artLight = flow * mix(1.0, through, aArt.z) * mix(0.5, 1.7, uArtHeat);
     }
 
@@ -503,7 +537,7 @@ const vert = /* glsl */ `
     // Loose motes differ: a few bright, most dim, all twinkling slowly. That
     // fades out as each one becomes part of the figure.
     float mote = (0.25 + 1.5 * pow(fract(aSeed * 9.13), 3.0)) * (0.8 + 0.2 * sin(uFreeTime * (0.2 + aSeed * 0.5) + ph));
-    vAlpha = shown * mix(1.0, mote, looseness) * dim * wave * boost * flight * uLife * (1.0 + pulse) * headLight * bodyLight * attnLight * clickLight * behind * artLight;
+    vAlpha = shown * mix(1.0, mote, looseness) * dim * wave * boost * flight * uLife * (1.0 + pulse) * headLight * bodyLight * attnLight * clickLight * behind * artLight * gestureLight;
     // Palette swap: cyan (and its white highlights) becomes red, red stays red.
     float m = max(max(aColor.r, aColor.g), aColor.b);
     float whiteness = min(min(aColor.r, aColor.g), aColor.b) / max(m, 0.001);
@@ -782,6 +816,11 @@ const common = () => ({
   uArtPhase: { value: 0 },
   uArtBeat: { value: new THREE.Vector3(-9999, 0, 1) },
   uBreath: { value: 0 },
+  uArtSurge: { value: new THREE.Vector3(-9999, 0, 0) },
+  uCrumbleAt: { value: new THREE.Vector4(0, 0, 1, 1) },
+  uCrumble: { value: 0 },
+  uRebuildAt: { value: new THREE.Vector4(0, 0, 1, 1) },
+  uRebuild: { value: new THREE.Vector3() },
   uParallax: { value: 0 },
   uRed: { value: 0 },
   uFade: { value: 1 },
@@ -1324,8 +1363,8 @@ function eyeGain(s, clock, level, since, breath) {
     case 'dormant':
       return 0.09 + 0.05 * breath // an ember that breathes (the mind's dream stirs it)
     case 'waking':
-      // Dark, a stuttering spark, then the flash as the pulse reaches the head.
-      return since < 0.5 ? 0.08 + 0.3 * (since / 0.5) * (0.6 + 0.4 * Math.sin(since * 55)) : 1 + 1.5 * Math.exp(-(since - 0.5) * 3.5)
+      // Coming up; the flash, and how fast, is the mind's answer (eyes.boost, eyes.gain).
+      return Math.min(1, 0.12 + since / 0.35)
     case 'listening':
       return 1.35
     case 'thinking':
@@ -1360,6 +1399,8 @@ const ease = { life: 0, rate: 0.5, loose: 1, dim: 0, waveRate: 1.2, waveDepth: 0
 let keepPlan = false
 function setState(s, auto = false) {
   if (!STATE[s]) return
+  // Nothing wakes it but a call, which the mind answers in its own time (see call()).
+  if (s === 'waking' && !wakingByAnswer) return call(auto)
   if (!auto) cancelFlow()
   const now = performance.now() / 1000
   if (s === 'boot') {
@@ -1407,8 +1448,7 @@ function cancelFlow() {
 const FLOW = [
   [0, 'offline'],
   [1.4, 'boot'], // the assembly ends into dormant by itself, at about 12 s
-  [15, 'waking'],
-  [16.8, 'listening'],
+  [15, 'waking'], // a call: the answer moves on to listening when it has settled (by ~19 s)
   [19.8, 'thinking'],
   [22.3, 'tooling'],
   [25.8, 'speaking'],
@@ -1420,6 +1460,31 @@ function runFlow() {
   $('flow').classList.add('on')
   for (const [t, s] of FLOW) flowTimers.push(setTimeout(() => setState(s, true), t * 1000))
   flowTimers.push(setTimeout(cancelFlow, 36000))
+}
+
+// A call (C, or waking from the bar or the flow). The mind answers it its own way: it may
+// sigh or make you wait first (delay, at most 2 s), then wakes in a style its mood picks
+// (see the answer in mind/personalities/ultron.ts). The app would start listening at once;
+// here the figure turns to waking when the answer begins and to listening once it settles.
+// Before the figure exists (offline, boot) the mind is not there to answer: it just wakes.
+let wakingByAnswer = false
+function call(auto = false) {
+  if (!auto) cancelFlow()
+  let answer = null
+  const off = mind.on((e) => {
+    if (e.type === 'answer') answer = e
+  })
+  mind.stimulate('call')
+  off()
+  flowTimers.push(
+    setTimeout(() => {
+      wakingByAnswer = true
+      setState('waking', true)
+      wakingByAnswer = false
+      if (answer) $('status').textContent = `waking · ${answer.style}`
+    }, (answer ? answer.delay : 0) * 1000),
+  )
+  flowTimers.push(setTimeout(() => setState('listening', true), (answer ? answer.settle : 1.8) * 1000))
 }
 
 $('bar').addEventListener('click', (e) => {
@@ -1434,6 +1499,7 @@ window.addEventListener('keydown', (e) => {
   if (k === 'r') replayBoot()
   if (k === 'f') runFlow()
   if (k === 'p') togglePalette()
+  if (k === 'c') call()
 })
 // Offline is waiting for a click (the app needs one to unlock audio).
 canvas.addEventListener('click', () => {
@@ -1474,6 +1540,24 @@ const BOOT = [
 ]
 let bootShown = 0
 
+/* --------------------------------------------------------- mind gestures */
+
+// The regions of the body the mind can act on (crumble:<name>, rebuild:<name>): soft
+// ellipses in image px, [x, y, rx, ry], read off the V2 render. The right ones mirror the left.
+const REGIONS = { abdomen: [CX, 930, 70, 70] }
+for (const [k, [x, y, rx, ry]] of Object.entries({ shoulder: [125, 640, 85, 70], collar: [318, 565, 60, 40], chest: [345, 760, 85, 70] })) {
+  REGIONS[`${k}L`] = [x, y, rx, ry]
+  REGIONS[`${k}R`] = [W - 1 - x, y, rx, ry]
+}
+// A plate lifting off: how far and which way it turns are drawn afresh each time.
+const rebuild = { amount: 0, lift: 10, turn: 0.15 }
+// The surge up the arteries (the 'arteries.surge' cue): when it left, how fast, how strong.
+const surge = { at: -1e9, speed: 1000, strength: 0 }
+mind.on((e) => {
+  if (e.type === 'cue' && e.name === 'arteries.surge')
+    Object.assign(surge, { at: performance.now() / 1000, speed: Number(e.args.speed) || 1000, strength: Number(e.args.strength) || 1 })
+})
+
 /* ------------------------------------------------------------------ loop */
 
 window.__ultron = {
@@ -1483,9 +1567,10 @@ window.__ultron = {
   pose: null,
   artHeat: null,
   layers,
-  // Dev: the mind (its config, output(), force('dream'), stimulate('pointerErratic'), ...).
+  // Dev: the mind (its config, output(), force('crumble'), stimulate('pointerErratic'), ...).
   mind,
   dream: () => mind.force('dream'),
+  call: () => call(),
   // Dev: what the cursor interactions are doing right now.
   info: () => ({ click: { ...click }, look: { ...look }, clickU: clickU.value.toArray(), easeLook: ease.look, state }),
 }
@@ -1670,21 +1755,38 @@ function frame(nowMs) {
   look.attn += ((mouse.seen ? Math.min(1, ease.look) : 0) - look.attn) * k(6)
   attnU.value.set(mx, my)
 
-  // A band of light over the figure. Waking sends one strong pulse from the
-  // chest up to the head; tooling keeps sending weaker ones, like work being fed upward.
+  // A band of light over the figure: tooling keeps sending weak ones up it, like work
+  // being fed upward. (Waking no longer has one: the answer surges up the arteries.)
   let pulseY = -9999
   let pulseA = 0
   let pulseW = 60
-  if (state === 'waking') {
-    const p = Math.min(1, since / 0.9)
-    pulseY = H + 60 - (H - 20) * (1 - (1 - p) * (1 - p))
-    pulseA = since < 1.25 ? 2 : 0
-    pulseW = 80
-  } else if (state === 'tooling') {
+  if (state === 'tooling') {
     pulseY = H + 60 - (H - 40) * ((since * 0.75) % 1)
     pulseA = 0.9
     pulseW = 46
   }
+
+  // The mind's gestures. The surge's front runs up the arteries and fades past the crown
+  // (~700-950 px along them). The region crumbling or being rebuilt is whichever channel
+  // is furthest along; a rebuild that starts afresh draws its lift (8-14 px) and turn (6-15°).
+  const surgeFront = (clock - surge.at) * surge.speed - 20
+  const surgeFade = Math.max(0, Math.min(1, (surgeFront - 700) / 250))
+  const surgeAmp = surge.strength * (1 - surgeFade * surgeFade * (3 - 2 * surgeFade))
+  let crumbleAt = null
+  let crumbleAmt = 0
+  let rebuildAt = null
+  let rebuildAmt = 0
+  for (const [name, region] of Object.entries(REGIONS)) {
+    const c = ch(`crumble:${name}`)
+    if (c > crumbleAmt) [crumbleAmt, crumbleAt] = [c, region]
+    const r = ch(`rebuild:${name}`)
+    if (r > rebuildAmt) [rebuildAmt, rebuildAt] = [r, region]
+  }
+  if (rebuildAmt > 0 && rebuild.amount === 0) {
+    rebuild.lift = 8 + Math.random() * 6
+    rebuild.turn = ((6 + Math.random() * 9) * Math.PI) / 180 * (Math.random() < 0.5 ? -1 : 1)
+  }
+  rebuild.amount = rebuildAmt
 
   for (const l of layers) {
     const u = l.uniforms
@@ -1705,6 +1807,11 @@ function frame(nowMs) {
     u.uArtPhase.value = artPhase
     u.uArtBeat.value.set((clock - beatAt) * 230 - 15, ease.beat * ch('arteries.beat'), 1 - ease.beat)
     u.uBreath.value = breathPx
+    u.uArtSurge.value.set(surgeFront, surgeAmp, 0)
+    if (crumbleAt) u.uCrumbleAt.value.set(...crumbleAt)
+    u.uCrumble.value = crumbleAmt
+    if (rebuildAt) u.uRebuildAt.value.set(...rebuildAt)
+    u.uRebuild.value.set(rebuildAmt, rebuild.lift, rebuild.turn)
     u.uDim.value = ease.dim * (meta.dimScale ?? 1)
     u.uRed.value = l.kind === 'figure' || back ? redNow : 0
     u.uLife.value = back ? 0.5 + 0.5 * lifeNow : lifeNow
