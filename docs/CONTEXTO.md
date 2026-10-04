@@ -205,7 +205,7 @@ ao app**.
 - **Papel de cada artéria** (combinado com o usuário):
   - externas descendo: `listening` (a voz que entra);
   - externas subindo: `thinking`;
-  - internas subindo: `speaking` (a voz que sai; ainda não feito);
+  - internas subindo: `speaking` (a voz que sai);
   - as quatro em ritmo de motor: `tooling`.
 - **`listening`:** queixo erguido.
   - Cada sílaba da voz (microfone real com `M`, ou voz simulada) manda um pulso descendo
@@ -225,6 +225,29 @@ ao app**.
   - **Fim da tarefa:** `T` = sucesso: os pulsos já lançados terminam o trajeto, nenhum
     novo sai, as turbinas desaceleram e os discos dão um clarão. `Y` = falha: o motor
     engasga, os pulsos travam, piscam e apagam, e as turbinas param com um tranco.
+- **`speaking`** (o inverso do listening: a voz sai pelas internas):
+  - **Pulsos:** cada sílaba falada manda um pulso subindo as internas, do peito até o núcleo
+    vermelho da bochecha (`CHEEK`, ao lado da boca; `cheekS` ≈ 366 px no trajeto), onde morre
+    e acende um pouco a bochecha (`uCheek`, nas camadas vermelhas). Só as sílabas mais altas
+    seguem pela maçã do rosto até o olho e o acendem ao chegar. O fim da frase manda um último
+    pulso, mais forte, e a bochecha acende inteira. As externas ficam quietas. Uniforms
+    `uArtSpeak` e `uArtOut[8]`.
+  - **Respiração de quem fala:** em cada pausa puxa o ar (sobe ~2 px em ¼ s) e vai soltando
+    enquanto fala (`speak.air`).
+  - **Ênfase:** uma sílaba acentuada inclina a cabeça para baixo (~1°, `nodNow` somado ao
+    `uPitch`) e manda uma onda leve pela poeira, saindo da boca (`uPush`, ~4 px).
+  - **Piscar:** nas pausas; uma piscada que vence no meio da frase espera a próxima pausa.
+  - **Tom (`TONE`):** o estilo com que atendeu o chamado continua na fala (`answeredAs`,
+    zerado ao voltar ao dormant). Sem chamado, vale o humor dominante (`MOOD_TONE`).
+    - `eager`: claro e direto;
+    - `weary`: lento, fraco, pálpebra pesada, nada chega aos olhos;
+    - `curt`: frases curtas e rápidas, pulsos quentes, olhos estreitos, rosto mais vermelho;
+    - `regal`: pausado, queixo erguido, pulsos largos e lentos.
+
+    Cada tom muda a voz simulada (`voiceOut.setVoice`), a velocidade, força e largura dos
+    pulsos, os limiares de alcance e ênfase, o aceno, o fôlego, o calor do rosto, o brilho
+    dos olhos e a postura. Os limiares foram ajustados para a voz simulada; a voz real do app
+    vai pedir novo ajuste.
 - **Removido a pedido do usuário:** a linha vermelha horizontal sobre os olhos (camada
   `streak`), o arrasto de vento na figura montada, a "faixa larga" do waking, as ondas em
   volta dos ouvidos (listening), a espiral (thinking), as placas se ajustando e os anéis do
@@ -261,6 +284,8 @@ ao app**.
 - `mind` é o orquestrador;
 - `call()` e `dream()` disparam o chamado e o sonho;
 - `hearing` e `listen` expõem a audição e os pulsos do listening;
+- `speak` expõe o speaking; `tone = 'eager' | 'weary' | 'curt' | 'regal'` fixa o tom da
+  próxima vez que ele começar a falar;
 - `info()` mostra o estado das interações.
 
 ---
@@ -498,10 +523,10 @@ repositório.
 
 ## 7. Pendências e próximos passos
 
-- **Estados ativos da figura:** listening, thinking e tooling estão feitos (seção 4.2).
-  O **speaking** já tem a boca. Falta o resto: as artérias internas levando a voz para fora,
-  até as bochechas, e a emoção na fala. Thinking e tooling foram testados ao vivo pelo
-  usuário, mas não têm checagem headless.
+- **Estados ativos da figura:** listening, thinking, tooling e speaking estão feitos (seção
+  4.2). Thinking e tooling foram testados ao vivo pelo usuário, mas não têm checagem
+  headless. O speaking foi verificado headless (pulsos, bochecha, aceno, fôlego, piscadas e
+  ondas, nos quatro tons) e falta o teste ao vivo.
 - **Rosto novo** (frestas, olhos e boca): verificado headless; falta o retorno do usuário
   ao vivo.
 - **Feedback ao vivo do usuário** ainda não chegou para: dormant, reações ociosas,
