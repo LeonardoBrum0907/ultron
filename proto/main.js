@@ -74,7 +74,9 @@ const BUDGET = {
   chin: 0, // the chin's outline (only the art made from the render has one)
   arteries: 0, // the four arteries from the core in the chest to the head (likewise)
   face: 5500,
-  faceBars: 5500, // the voice-print frames, which are sparse
+  faceBars: 5500, // the voice-print frames, which are sparse (the procedural art's; the render's speaks with its mouth)
+  eyes: 0, // the eyes the engine draws, and the mouth's slit (only the art made from the render has them)
+  mouth: 0,
   backdrop: 17000,
   ...meta.budget,
 }
@@ -110,8 +112,12 @@ function rng(seed) {
 /**
  * Pick ~count bright pixels, favouring the brighter ones, and describe each as
  * a particle: where it lives, its colour, how big it is.
+ *
+ * even: spread them evenly (error diffusion) instead of drawing each pixel at random. As
+ * many particles, but no clumps and no holes, so a thin seam reads as a line of dots and
+ * not as scattered grains. For the figure; the dust and the backdrop keep their randomness.
  */
-function sample(img, count, { floor = 0.1, bias = 0.9, seed = 1 } = {}) {
+function sample(img, count, { floor = 0.1, bias = 0.9, seed = 1, even = false } = {}) {
   const r = rng(seed)
   const { data, w, h } = img
   let sum = 0
@@ -121,6 +127,37 @@ function sample(img, count, { floor = 0.1, bias = 0.9, seed = 1 } = {}) {
   }
   const k = count / Math.max(sum, 1)
   const out = []
+  if (even) {
+    // Serpentine Floyd-Steinberg over how many particles each pixel should have.
+    const d = new Float32Array(w * h)
+    for (let i = 0; i < w * h; i++) {
+      const l = Math.max(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]) / 255
+      if (l > floor) d[i] = Math.pow(l, bias) * k
+    }
+    for (let y = 0; y < h; y++) {
+      const back = y & 1
+      const s = back ? -1 : 1
+      for (let n = 0; n < w; n++) {
+        const x = back ? w - 1 - n : n
+        const i = y * w + x
+        const v = d[i]
+        if (v === 0) continue
+        const j = i * 4
+        const l = Math.max(data[j], data[j + 1], data[j + 2]) / 255
+        // (a pixel too dark to draw passes on what it was handed)
+        const on = v >= 0.5 && l > floor ? 1 : 0
+        const e = v - on
+        if (x + s >= 0 && x + s < w) d[i + s] += (e * 7) / 16
+        if (y + 1 < h) {
+          if (x - s >= 0 && x - s < w) d[i + w - s] += (e * 3) / 16
+          d[i + w] += (e * 5) / 16
+          if (x + s >= 0 && x + s < w) d[i + w + s] += e / 16
+        }
+        if (on) out.push({ x: x + 0.25 + 0.5 * r(), y: y + 0.25 + 0.5 * r(), r: data[j] / 255, g: data[j + 1] / 255, b: data[j + 2] / 255, l })
+      }
+    }
+    return out
+  }
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4
@@ -145,7 +182,10 @@ const vert = /* glsl */ `
   attribute float aJit;     // how far this particle wanders at rest, in image px
   attribute float aFace;    // 0..1, how deep inside the face glow this sits
   attribute vec3 aColor;
-  attribute vec3 aArt;      // arteries only: x px along the artery from where it starts, y 0 a source / 1 an inner artery / 2 an outer one, z how much plate lies over it (0..1)
+  attribute vec4 aArt;      // arteries only: x px along the artery from where it starts, y 0 a source / 1 an inner artery / 2 an outer one, z how much plate lies over it (0..1), w px still to go to its end at the eye
+  uniform float uArtReach;  // 0..1: how far the pulses run on into the eyes (only at the extremes)
+  attribute vec4 aEye;      // eyes only: x which (+1 the left on screen, -1 the right), y 0 the iris / 1 the pupil, z r px from the centre, w the angle rad
+  attribute float aSlit;    // the mouth's slit only: how far across the gap it sits, 0 at the seam .. 1 at the jaw
 
   uniform float uTime;
   uniform float uAsm;       // seconds since the assembly began
@@ -183,8 +223,17 @@ const vert = /* glsl */ `
   uniform vec4  uDiscs[4];  // the red discs (DISCS): centre xy and radius, image px; w how far its blades of light have turned, rad
   uniform vec3  uDiscFx[4]; // each disc: x extra light (-1 = dark), y how far it is drawn in 0..1, z how strong its blades are 0..1
   uniform float uSpins;     // 1 = this layer's light is the discs' (the red layers)
-  uniform float uCrown;     // thinking: light gathered at the top of the skull, 0..1
   uniform float uStir;      // listening: how hard the voice stirs the dust round the body (the backdrop, and the dust by the plates), 0..1
+  uniform float uEye;       // 1 = this layer is the eyes
+  uniform vec2  uEyeC[2];   // each eye's centre (the pupil at rest), image px: 0 the left on screen, 1 the right
+  uniform vec4  uEyeGeo;    // x the slant (rad, down toward the nose), y the outer corner's u, z the inner's, w the iris's radius (px)
+  uniform vec3  uEyeLid;    // x how far above the centre the upper lid sits at rest, y how far below the lower, z rings across the iris
+  uniform vec4  uEyeSt[2];  // each eye: x open (0 shut, 1 at rest, >1 wide), y squint (the lower lid rises), z tilt (+ the upper lid lower toward the nose: anger; - toward the temple), w the iris's size (1 at rest)
+  uniform vec2  uEyeLook;   // px the irises have moved in their sockets (both alike)
+  uniform vec2  uEyeSpin;   // the iris's rings turning: x how far (rad), y how strongly their segments show 0..1
+  uniform vec4  uMouthGeo;  // the jaw piece, image px: x the seam's y, y the column's half width, z where the chin cup starts (y), w the cup's half width
+  uniform vec2  uMouth;     // x px the jaw has dropped, y how bright the slit it opens is
+  uniform float uSlit;      // 1 = this layer is the mouth's slit
   uniform vec4  uCrumbleAt; // the region crumbling to dust: centre and radii, image px
   uniform float uCrumble;   // how far it has gone to dust, 0..1
   uniform vec4  uRebuildAt; // the plate lifting off and re-seating: centre and radii, image px
@@ -240,6 +289,24 @@ const vert = /* glsl */ `
   float jawLine(float dx) {
     float ax = abs(dx);
     return uNeck.x + 8.0 - 22.0 * smoothstep(24.0, 80.0, ax) - 16.0 * smoothstep(80.0, 100.0, ax);
+  }
+
+  // The eye's lids, as v (px across the eye, down) at u (px along it, toward the nose), for an
+  // eye in state st (see uEyeSt). The socket is an almond: 1 in the middle, 0 at its corners.
+  float eyeShape(float u) {
+    float sp = u >= 0.0 ? uEyeGeo.z : uEyeGeo.y;
+    return max(0.0, 1.0 - (u / sp) * (u / sp));
+  }
+  float lidLo(float u, vec4 st) {
+    return uEyeLid.y * pow(eyeShape(u), 0.7) * (1.0 - 0.6 * st.y);
+  }
+  // Open 0 brings the upper lid down onto the lower; past 1 it lifts on beyond where it rests.
+  // Tilted, it comes lower toward the nose (anger) or toward the temple (sorrow).
+  float lidUp(float u, vec4 st) {
+    float sh = eyeShape(u);
+    float lo = lidLo(u, st);
+    float up = mix(lo, -uEyeLid.x * pow(sh, 0.6), st.x) + st.z * 3.0 * clamp(u / 20.0, -1.0, 1.0) * sh;
+    return min(up, lo);
   }
 
   void main() {
@@ -341,6 +408,49 @@ const vert = /* glsl */ `
         discLight *= max(0.0, 1.0 + uDiscFx[i].x * m) * (1.0 + uDiscFx[i].z * m * (2.2 * blade - 0.5));
       }
     }
+    // THE EYES (meta.eyes), drawn here so that they can move. Each particle is a piece of an
+    // iris: rings round a hot pupil, aEye.zw its place round the centre. The lids are not
+    // drawn, only felt: curves across the almond of the socket (lidUp, lidLo) that open, shut,
+    // squint and tilt with the eye's state, and the iris shows only between them. It moves in
+    // its socket (uEyeLook), grows and shrinks, and slides under them. Its rings can turn:
+    // segments of light run round them, each ring the other way (uEyeSpin), as the turbines'
+    // blades do; particles running round a ring would not show.
+    float eyeLight = 1.0;
+    if (uEye > 0.5) {
+      bool left = aEye.x > 0.0;
+      vec2 ec = left ? uEyeC[0] : uEyeC[1];
+      vec4 st = left ? uEyeSt[0] : uEyeSt[1];
+      vec2 eu = vec2(aEye.x * cos(uEyeGeo.x), sin(uEyeGeo.x)); // along the eye, toward the nose
+      vec2 ev = vec2(-aEye.x * sin(uEyeGeo.x), cos(uEyeGeo.x)); // across it, down
+      vec2 eq = ec + uEyeLook + vec2(cos(aEye.w), sin(aEye.w)) * aEye.z * st.w;
+      float eu0 = dot(eq - ec, eu);
+      float ev0 = dot(eq - ec, ev);
+      float up = lidUp(eu0, st);
+      float lo = lidLo(eu0, st);
+      eyeLight = smoothstep(up - 0.6, up + 0.6, ev0) * smoothstep(lo + 0.6, lo - 0.6, ev0);
+      if (aEye.y < 0.5) {
+        float ring = floor(aEye.z / (uEyeGeo.w / uEyeLid.z) + 0.5);
+        float dir = mod(ring, 2.0) * 2.0 - 1.0;
+        float seg = pow(0.5 + 0.5 * cos(6.0 * (aEye.w - dir * uEyeSpin.x)), 2.0);
+        eyeLight *= mix(1.0, 0.35 + 1.3 * seg, uEyeSpin.y);
+      }
+      p += (eq - aTarget) * e;
+    }
+    // THE MOUTH. The render has no lips: the mouth is the seam under the nose plate, and under
+    // it the jaw is a piece of its own (uMouthGeo): the tabs and the column between the cheek
+    // pods, then the chin cup down to where the head ends. Speaking, the voice drops it by a
+    // few px (uMouth.x) and the slit it opens glows (the slit layer, aSlit of the way across
+    // the gap, dark while the mouth is shut). The arteries behind it stay where they are.
+    float slitLight = 1.0;
+    if (uMouth.x > 0.001 && uFloat > 0.5) {
+      float mdx = abs(aTarget.x - ${CX.toFixed(1)});
+      float mw = aTarget.y < uMouthGeo.z ? uMouthGeo.y : uMouthGeo.w;
+      float jy = jawLine(aTarget.x - uHead.x);
+      float jaw = smoothstep(uMouthGeo.x, uMouthGeo.x + 1.0, aTarget.y) * (1.0 - smoothstep(mw - 1.5, mw + 1.5, mdx))
+        * (1.0 - smoothstep(jy - 1.0, jy + 3.0, aTarget.y)) * (1.0 - uArt);
+      p.y += uMouth.x * (uSlit > 0.5 ? aSlit : jaw) * e;
+    }
+    if (uSlit > 0.5) slitLight = uMouth.y;
     vec2 pRest = p; // before the head and the trunk turn
 
     // looseness: 1 while a particle is dust in the cloud, 0 once it is part of the figure.
@@ -532,15 +642,19 @@ const vert = /* glsl */ `
     // strong surge runs the whole way up, shining through the plates where it passes.
     float artLight = 1.0;
     if (uArt > 0.5) {
+      // The course runs to the eyes, but the pulses die out over its last 100 px (under the
+      // brow, up the cheekbone) and reach the eyes only at the extremes (uArtReach).
+      float reach = mix(smoothstep(25.0, 100.0, aArt.w), 1.0, uArtReach);
       float k = (aArt.x - uArtPhase) / 260.0;
-      float band = pow(0.5 + 0.5 * cos(6.2831 * k), 8.0);
+      float band = pow(0.5 + 0.5 * cos(6.2831 * k), 8.0) * reach;
       float beat = pow(0.5 + 0.5 * cos(6.2831 * uArtPhase / 260.0), 6.0);
       float flow = mix(0.5, aArt.y < 0.5 ? 0.75 + 0.6 * beat : 0.5 + 1.1 * band, uArtBeat.z);
       // Thinking, the thought goes UP: quick pulses leave the sources 170 px apart (each
-      // one flaring them) and run up the outer arteries, over the temples to the crown,
-      // shining through the plates as they pass. The inner ones go quiet.
+      // one flaring them) and run up the outer arteries, over the temples and down the
+      // forehead to the eyes, shining through the plates as they pass (each lights the eyes
+      // as it arrives, see eyeGain). The inner ones go quiet.
       float tk = uArtThink.x;
-      float tband = pow(0.5 + 0.5 * cos(6.2831 * (aArt.x - uArtThink.y) / 170.0), 10.0);
+      float tband = pow(0.5 + 0.5 * cos(6.2831 * (aArt.x - uArtThink.y) / 170.0), 10.0) * reach;
       if (aArt.y > 1.5) flow = mix(flow, 0.35 + 2.2 * tband, tk);
       else if (aArt.y > 0.5) flow = mix(flow, 0.4, 0.6 * tk);
       else flow = mix(flow, 0.7 + 1.2 * tband, tk);
@@ -551,7 +665,7 @@ const vert = /* glsl */ `
       // the gain lets a failure make the stalled ones flicker out.
       float wk = uArtTool.x;
       float wside = step(${CX.toFixed(1)}, aTarget.x);
-      float wband = pow(0.5 + 0.5 * cos(6.2831 * (aArt.x - uArtTool.y + 280.0 * wside) / 560.0), 24.0) * step(uArtTool.z, aArt.x) * uArtTool.w;
+      float wband = pow(0.5 + 0.5 * cos(6.2831 * (aArt.x - uArtTool.y + 280.0 * wside) / 560.0), 24.0) * step(uArtTool.z, aArt.x) * uArtTool.w * reach;
       flow = mix(flow, 0.35 + 2.4 * wband, wk);
       // Listening, the outer arteries, which pass the ears at the temples, carry the voice
       // IN: their outward flow gives way to a faint glow that follows the voice, and each
@@ -569,7 +683,7 @@ const vert = /* glsl */ `
       float hz = (aArt.x - uArtBeat.x) / 26.0;
       flow += 2.4 * uArtBeat.y * exp(-hz * hz) * exp(-aArt.x / 120.0);
       float sz = (aArt.x - uArtSurge.x) / 45.0;
-      float surge = uArtSurge.y * exp(-sz * sz);
+      float surge = uArtSurge.y * exp(-sz * sz) * reach;
       flow += 3.0 * surge;
       float through = mix(mix(0.06, 0.65, uArtHeat), 0.95, min(1.0, surge));
       through = max(through, 0.7 * min(1.0, heard));
@@ -598,10 +712,7 @@ const vert = /* glsl */ `
     // Loose motes differ: a few bright, most dim, all twinkling slowly. That
     // fades out as each one becomes part of the figure.
     float mote = (0.25 + 1.5 * pow(fract(aSeed * 9.13), 3.0)) * (0.8 + 0.2 * sin(uFreeTime * (0.2 + aSeed * 0.5) + ph));
-    // Thinking, light gathers at the top of the skull, where the outer arteries end.
-    vec2 cz = (aTarget - vec2(${CX.toFixed(1)}, 150.0)) / vec2(115.0, 62.0);
-    float crownLight = 1.0 + uCrown * exp(-dot(cz, cz));
-    vAlpha = crownLight * shown * mix(1.0, mote, looseness) * dim * wave * boost * flight * uLife * headLight * bodyLight * attnLight * clickLight * behind * artLight * gestureLight * discLight * (1.0 + 0.6 * uStir);
+    vAlpha = shown * mix(1.0, mote, looseness) * dim * wave * boost * flight * uLife * headLight * bodyLight * attnLight * clickLight * behind * artLight * gestureLight * discLight * eyeLight * slitLight * (1.0 + 0.6 * uStir);
     // Palette swap: cyan (and its white highlights) becomes red, red stays red.
     float m = max(max(aColor.r, aColor.g), aColor.b);
     float whiteness = min(min(aColor.r, aColor.g), aColor.b) / max(m, 0.001);
@@ -642,10 +753,11 @@ const attnU = { value: new THREE.Vector2(-9999, -9999) }
 const artHearU = { value: new THREE.Vector3() }
 const artInU = { value: Array.from({ length: 8 }, () => new THREE.Vector2(-9999, 0)) }
 let earS = 540 // px along an outer artery from its source to where it passes the ear (set by build())
-let outerLen = 690 // px along an outer artery from its source to its end at the crown (set by build())
+let outerLen = 714 // px along an outer artery from its source to its end over the eye (set by build())
 // Thinking and tooling (see uArtThink and uArtTool in the shader).
 const artThinkU = { value: new THREE.Vector3() }
 const artToolU = { value: new THREE.Vector4(0, 0, -1, 1) }
+const artReachU = { value: 0 } // see uArtReach: eased in the frame loop
 // The four red discs, read off the V2 render (canvas px, [x, y, radius]): two by the middle of
 // the chest, on whose rims the arteries start, and two inside the shoulders, their upper part
 // under the plates. Tooling works them (see disc in the frame loop).
@@ -657,6 +769,18 @@ const DISCS = [
 ]
 const discsU = { value: DISCS.map(([x, y, r]) => new THREE.Vector4(x, y, r, 0)) }
 const discFxU = { value: DISCS.map(() => new THREE.Vector3()) }
+// The eyes and the mouth, as the art gives them (meta.eyes, meta.mouth; see art/from-image.mjs).
+// Art without them has no eye layer and no slit, and nothing moves the jaw.
+const EYE = meta.eyes
+const MOUTH = meta.mouth
+const eyeCU = { value: [0, 1].map((i) => new THREE.Vector2(...(EYE ? EYE.at[i].c : [0, 0]))) }
+const eyeGeoU = { value: new THREE.Vector4(EYE?.slant ?? 0, EYE?.outer ?? 30, EYE?.inner ?? 30, EYE?.iris ?? 13) }
+const eyeLidU = { value: new THREE.Vector3(EYE?.up ?? 6, EYE?.lo ?? 9, EYE?.rings ?? 2.5) }
+const eyeStU = { value: [0, 1].map(() => new THREE.Vector4(1, 0, 0, 1)) }
+const eyeLookU = { value: new THREE.Vector2() }
+const eyeSpinU = { value: new THREE.Vector2() }
+const mouthGeoU = { value: new THREE.Vector4(MOUTH?.seam ?? 0, MOUTH?.column ?? 0, MOUTH?.cupTop ?? 0, MOUTH?.cup ?? 0) }
+const mouthU = { value: new THREE.Vector2() }
 
 // The currents. Five of them, one per part of the figure; the figure is built
 // bottom to top, a part at a time. Each current gathers its particles from one
@@ -908,7 +1032,17 @@ const common = () => ({
   uDiscs: discsU,
   uDiscFx: discFxU,
   uSpins: { value: 0 },
-  uCrown: { value: 0 },
+  uArtReach: artReachU,
+  uEye: { value: 0 },
+  uEyeC: eyeCU,
+  uEyeGeo: eyeGeoU,
+  uEyeLid: eyeLidU,
+  uEyeSt: eyeStU,
+  uEyeLook: eyeLookU,
+  uEyeSpin: eyeSpinU,
+  uMouthGeo: mouthGeoU,
+  uMouth: mouthU,
+  uSlit: { value: 0 },
   uCrumbleAt: { value: new THREE.Vector4(0, 0, 1, 1) },
   uCrumble: { value: 0 },
   uRebuildAt: { value: new THREE.Vector4(0, 0, 1, 1) },
@@ -1062,6 +1196,7 @@ function arteryParticles({ sources, sourceSize = 1, routes }, count, seed, plate
           y: q.y + q.tx * off + q.ty * along,
           ...(glow ? { r: 1, g: 0.13, b: 0.1, l: 0.45 } : { r: 1, g: 0.22, b: 0.14, l: 0.85 }),
           s: q.s,
+          end: pa.pts.at(-1).s - q.s,
           role: pa.role,
         })
       }
@@ -1077,14 +1212,90 @@ function arteryParticles({ sources, sourceSize = 1, routes }, count, seed, plate
       y: src[1] + Math.sin(a) * d,
       ...(disc ? { r: 1, g: 0.4, b: 0.28, l: 0.95 } : { r: 1, g: 0.16, b: 0.11, l: 0.6 }),
       s: 0,
+      end: 9999,
       role: 0,
     })
   }
-  // How much plate lies over each one (plates.png, 0 open .. 1 a plate).
+  // How much plate lies over each one (plates.png, 0 open .. 1 a plate). Under a plate they
+  // are not drawn at all (the user: hidden behind the plates, showing only in the cavities,
+  // the cuts and the seams), with a soft edge where an opening ends.
   for (const p of out) {
     const x = Math.min(plates.w - 1, Math.max(0, Math.round(p.x)))
     const y = Math.min(plates.h - 1, Math.max(0, Math.round(p.y)))
     p.cover = plates.data[(y * plates.w + x) * 4] / 255
+  }
+  return out.filter((p) => p.role === 0 || r() > Math.max(0, Math.min(1, (p.cover - 0.35) / 0.25)))
+}
+
+/**
+ * The eyes as particles (meta.eyes, canvas px). Each iris is drawn whole, its lids hide it
+ * in the shader: rings bright at the rim and every 1/rings of the way in, dark between, round
+ * a hot pupil, laid on a half-px grid and spread evenly. The lids themselves are not drawn
+ * (the user preferred the irises alone to red lines round them): they show only by what they
+ * cut off. Each particle carries aEye (see the shader): which eye, what it is, its place on it.
+ */
+function eyeParticles({ iris: R, rings, at }, count, seed) {
+  const r = rng(seed)
+  const sm = (a, b, v) => {
+    const t = Math.max(0, Math.min(1, (v - a) / (b - a)))
+    return t * t * (3 - 2 * t)
+  }
+  const shoulder = (v) => 1 - Math.exp(-1.7 * v)
+  const out = []
+  const STEP = 0.5
+  const n = Math.ceil((R + 2) / STEP)
+  const cells = []
+  let sum = 0
+  for (let j = -n; j <= n; j++)
+    for (let i = -n; i <= n; i++) {
+      const dx = i * STEP
+      const dy = j * STEP
+      const rr = Math.hypot(dx, dy)
+      const t = rr / R
+      const band = 0.5 + 0.5 * Math.cos((1 - t) * rings * 2 * Math.PI)
+      const ring = (0.08 + 0.92 * band ** 4) * sm(1.1, 0.97, t) * sm(0.12, 0.3, t)
+      const pupil = Math.exp(-((rr / (0.18 * R)) ** 2))
+      const red = shoulder(ring * 1.1 + 0.3 * ring + 1.4 * pupil)
+      const w = Math.pow(Math.max(ring, pupil * 1.2), 0.6)
+      cells.push({ dx, dy, w, pupil: pupil > ring, col: [red, shoulder(0.13 * 1.1 * ring + 0.58 * (0.3 * ring + 1.4 * pupil)), shoulder(0.1 * 1.1 * ring + 0.4 * (0.3 * ring + 1.4 * pupil))] })
+      sum += w
+    }
+  const perEye = count / at.length
+  for (const { c, side } of at) {
+    let carry = 0
+    for (const cell of cells) {
+      carry += (cell.w * perEye) / sum
+      if (carry < 0.5) continue
+      carry -= 1
+      const x = cell.dx + (r() - 0.5) * STEP
+      const y = cell.dy + (r() - 0.5) * STEP
+      const [cr, cg, cb] = cell.col
+      out.push({ x: c[0] + x, y: c[1] + y, r: cr, g: cg, b: cb, l: Math.max(cr, cg, cb), eye: [side, cell.pupil ? 1 : 0, Math.hypot(x, y), Math.atan2(y, x)] })
+    }
+  }
+  return out
+}
+
+/**
+ * The mouth's slit (meta.mouth, canvas px): red particles along the seam under the nose plate,
+ * from one red vent to the other, each aSlit of the way across the gap the jaw opens. The gap
+ * is widest over the jaw piece (the column) and closes to a glowing line toward the corners;
+ * the light is hottest in the middle.
+ */
+function mouthParticles({ seam, x0, x1, column }, count, seed) {
+  const r = rng(seed)
+  const sm = (a, b, v) => {
+    const t = Math.max(0, Math.min(1, (v - a) / (b - a)))
+    return t * t * (3 - 2 * t)
+  }
+  const out = []
+  for (let k = 0; k < count; k++) {
+    const x = x0 + ((k + r()) / count) * (x1 - x0)
+    const dx = Math.abs(x - CX)
+    const widest = dx < column ? 1 : 0.2 + 0.8 * sm(x1 - CX, column, dx)
+    const mid = sm(x1 - CX, 0, dx)
+    const l = 0.55 + 0.45 * mid
+    out.push({ x, y: seam + 0.5 + (r() - 0.5) * 0.8, r: l, g: l * (0.18 + 0.35 * mid), b: l * (0.12 + 0.25 * mid), l, slit: r() * widest })
   }
   return out
 }
@@ -1164,7 +1375,7 @@ async function build() {
   // sampled together, the bright rim would swallow every particle and the
   // contour lines that give the body its volume would vanish.
   const figure = { kind: 'figure', anchor: [CX, H], delayOf: figureDelay, startOf: figureStart }
-  makeLayer(sample(lines, BUDGET.lines, { floor: 0.05, bias: 0.25, seed: 11 }), {
+  makeLayer(sample(lines, BUDGET.lines, { floor: 0.05, bias: 0.25, seed: 11, even: true }), {
     ...figure,
     seed: 101,
     jitter: (p, r) => 0.3 + r() * 0.7,
@@ -1172,23 +1383,23 @@ async function build() {
   // The shading of the plates, for art that has it (the AI render does).
   if (meta.fill) {
     const fill = await pixels('fill.png')
-    makeLayer(sample(fill, BUDGET.fill, { floor: 0.05, bias: 1, seed: 19 }), {
+    makeLayer(sample(fill, BUDGET.fill, { floor: 0.05, bias: 1, seed: 19, even: true }), {
       ...figure,
       seed: 109,
       jitter: (p, r) => 0.2 + r() * 0.5,
     })
   }
   // Extra particles for the head, which is small on screen and carries the
-  // character: finer, denser, same palette (see art/from-image.mjs).
+  // character: finer, denser, same palette; its seams as thin lines (see art/from-image.mjs).
   if (meta.head) {
     const [headLines, headFill] = await Promise.all(['head-lines.png', 'head-fill.png'].map(pixels))
-    makeLayer(sample(headLines, BUDGET.headLines, { floor: 0.05, bias: 0.8, seed: 21 }), {
+    makeLayer(sample(headLines, BUDGET.headLines, { floor: 0.05, bias: 0.8, seed: 21, even: true }), {
       ...figure,
       seed: 111,
       size: 0.8,
       jitter: (p, r) => 0.2 + r() * 0.4,
     })
-    makeLayer(sample(headFill, BUDGET.headFill, { floor: 0.05, bias: 1, seed: 22 }), {
+    makeLayer(sample(headFill, BUDGET.headFill, { floor: 0.05, bias: 1, seed: 22, even: true }), {
       ...figure,
       seed: 112,
       size: 0.8,
@@ -1199,14 +1410,14 @@ async function build() {
   // lines around them but otherwise exactly the head's lines (see art/from-image.mjs).
   if (meta.chin) {
     const chin = await pixels('chin.png')
-    makeLayer(sample(chin, BUDGET.chin, { floor: 0.05, bias: 0.8, seed: 40 }), {
+    makeLayer(sample(chin, BUDGET.chin, { floor: 0.05, bias: 0.8, seed: 40, even: true }), {
       ...figure,
       seed: 120,
       size: 0.8,
       jitter: (p, r) => 0.2 + r() * 0.4,
     })
   }
-  makeLayer(sample(rim, BUDGET.rim, { floor: 0.06, bias: 0.5, seed: 14 }), {
+  makeLayer(sample(rim, BUDGET.rim, { floor: 0.06, bias: 0.5, seed: 14, even: true }), {
     ...figure,
     seed: 104,
     jitter: (p, r) => 0.15 + r() * 0.5,
@@ -1223,7 +1434,7 @@ async function build() {
   // Red light spilling off the figure. It is already red, so the palette swap leaves
   // it be (uRed is only driven on the cyan layers, see the frame loop). No flare runs
   // across the eyes: it read as a red line through the face.
-  makeLayer(sample(redrim, BUDGET.redrim, { floor: 0.05, bias: 0.5, seed: 16 }), {
+  makeLayer(sample(redrim, BUDGET.redrim, { floor: 0.05, bias: 0.5, seed: 16, even: true }), {
     ...figure,
     kind: 'redlight',
     seed: 106,
@@ -1232,9 +1443,10 @@ async function build() {
     durOf: redDur,
   })
 
-  // The eyes, the cheek targets and the creases across the forehead. Their own
-  // layer so the frame loop can drive their brightness by state. They light last.
-  lightsLayer = makeLayer(sample(lights, BUDGET.lights, { floor: 0.05, bias: 0.4, seed: 18 }), {
+  // The hottest red points: the cheek targets, the creases across the forehead, and with the
+  // procedural art the eyes (the render's are drawn below, eyeParticles). Their own layer so
+  // the frame loop can drive their brightness by state. They light last.
+  lightsLayer = makeLayer(sample(lights, BUDGET.lights, { floor: 0.05, bias: 0.4, seed: 18, even: true }), {
     ...figure,
     kind: 'redlight',
     seed: 108,
@@ -1243,7 +1455,7 @@ async function build() {
     durOf: eyesDur,
   })
 
-  const vein = makeLayer(sample(veins, BUDGET.veins, { floor: 0.08, bias: 0.6, seed: 12 }), {
+  const vein = makeLayer(sample(veins, BUDGET.veins, { floor: 0.08, bias: 0.6, seed: 12, even: true }), {
     kind: 'veins',
     anchor: [CX, H],
     seed: 102,
@@ -1269,7 +1481,7 @@ async function build() {
       delayOf: redDelay,
       durOf: redDur,
       startOf: figureStart,
-      attrs: { aArt: [3, (p) => [p.s, p.role, p.cover]] },
+      attrs: { aArt: [4, (p) => [p.s, p.role, p.cover, p.end]] },
     })
     art.uniforms.uArt.value = 1
     // Where the outer arteries pass the ears, at the top of the red louvres on the temple
@@ -1283,11 +1495,43 @@ async function build() {
     }
   }
 
+  // The eyes, drawn here so that they can move (see eyeParticles and the shader): small, still
+  // particles, arriving last with the lights. The frame loop drives them (see eyes).
+  if (EYE && BUDGET.eyes) {
+    eyesLayer = makeLayer(eyeParticles(EYE, BUDGET.eyes, 51), {
+      kind: 'eyes',
+      anchor: [CX, H],
+      seed: 131,
+      size: 0.7,
+      jitter: () => 0.12,
+      delayOf: eyesDelay,
+      durOf: eyesDur,
+      startOf: figureStart,
+      attrs: { aEye: [4, (p) => p.eye] },
+    })
+    eyesLayer.uniforms.uEye.value = 1
+  }
+  // The mouth's slit, dark until the jaw drops (see mouthParticles and the shader).
+  if (MOUTH && BUDGET.mouth) {
+    const slit = makeLayer(mouthParticles(MOUTH, BUDGET.mouth, 52), {
+      kind: 'slit',
+      anchor: [CX, H],
+      seed: 132,
+      size: 0.75,
+      jitter: () => 0.2,
+      delayOf: eyesDelay,
+      durOf: eyesDur,
+      startOf: figureStart,
+      attrs: { aSlit: [1, (p) => [p.slit]] },
+    })
+    slit.uniforms.uSlit.value = 1
+  }
+
   const states = {}
   for (const [i, s] of meta.states.entries()) {
     const img = await pixels(`face-${s}.png`)
     const count = /^(speak|strong)/.test(s) ? BUDGET.faceBars : BUDGET.face
-    const layer = makeLayer(sample(img, count, { floor: 0.06, bias: 0.45, seed: 20 + i }), {
+    const layer = makeLayer(sample(img, count, { floor: 0.06, bias: 0.45, seed: 20 + i, even: true }), {
       kind: 'face',
       anchor: [CX, H],
       seed: 110 + i,
@@ -1315,6 +1559,7 @@ async function build() {
 }
 
 let lightsLayer
+let eyesLayer = null
 const faceLayers = await build()
 
 const total = layers.reduce((n, l) => n + l.points.geometry.attributes.position.count, 0)
@@ -1377,13 +1622,15 @@ window.addEventListener('pointerleave', () => {
 //          looks less while it speaks, more while it listens)
 //   loose  how far particles wander at rest   dim    how far the cyan gives way under the face glow
 //   wave   [rate, depth] of the energy running up the red veins
-//   level  the voice level that drives the shimmer and the bars. Simulated here;
-//          the app would feed its own.
+//   level  the voice level that drives the shimmer (and the mouth while it speaks). Simulated
+//          here; the app would feed its own.
 // Optional, set only where a state differs:
 //   follow how quickly the head and the trunk follow the cursor (1 = 4.2/s and 1.8/s)
 //   nod    rad the head hangs forward       beat   1 = the arteries beat once a breath, else steady flow
 //   breath [rad/s, px it rises, how much the brightness follows it]; by default it runs on
 //          the figure's clock (0.8 rad/s at rate 1), 1.6 px, brightness steady
+//   lid    how open the eyes are (1 at rest, 0 shut, >1 wide)   squint  the lower lids rise 0..1
+//   pupil  the irises' size (1 at rest)                          spin   1 = the irises' rings turn
 // The names are the app's own phases (src/store.ts), minus the ones that are
 // only a screen: boot is the assembly, offline is the figure before the click.
 const STATE = {
@@ -1403,8 +1650,11 @@ const STATE = {
     nod: 0.07,
     breath: [(2 * Math.PI) / 5, 3, 0.18],
     beat: 1,
+    // heavy-lidded, the irises small
+    lid: 0.3,
+    pupil: 0.8,
   },
-  waking: { look: 1, life: 1.1, rate: 1.4, loose: 0.8, dim: 0.8, wave: [3.4, 0.5], level: (t) => 0.14 + 0.1 * Math.sin(t * 7.3) },
+  waking: { look: 1, life: 1.1, rate: 1.4, loose: 0.8, dim: 0.8, wave: [3.4, 0.5], level: (t) => 0.14 + 0.1 * Math.sin(t * 7.3), lid: 1.15, pupil: 1.1 },
   // Attentive, and from above: chin up, the head on the cursor at once, the breath short and
   // held (3 s, 1 px). The voice it hears comes in at the ears and down the outer arteries (see listen).
   listening: {
@@ -1418,10 +1668,13 @@ const STATE = {
     follow: 1.7,
     nod: -0.035,
     breath: [(2 * Math.PI) / 3, 1, 0],
+    // wide open, the irises open to take it in
+    lid: 1.12,
+    pupil: 1.15,
   },
   // Absent, calculating: the cursor is let go and it stares at a vague point off to one side
   // and up (stare), the head nearly still; the breath all but stops and the dust settles.
-  // What moves is the thought, going up the outer arteries to the crown (see think).
+  // What moves is the thought, going up the outer arteries and down into the eyes (see think).
   thinking: {
     look: 0,
     life: 1,
@@ -1433,6 +1686,10 @@ const STATE = {
     follow: 0.6,
     breath: [(2 * Math.PI) / 6, 0.3, 0],
     stare: 1,
+    // half-closed, the irises' rings turning like a lens hunting for focus
+    lid: 0.8,
+    pupil: 0.9,
+    spin: 1,
   },
   // In command of something it is running: it follows the cursor, but stiffly and slower,
   // the trunk held firm and the idle sway nearly gone (sway, trunk); a short, regular breath.
@@ -1449,6 +1706,10 @@ const STATE = {
     sway: 0.2,
     trunk: 0.4,
     breath: [(2 * Math.PI) / 2.5, 1.2, 0],
+    // narrowed on the work, the irises tight (and catching each beat, see eyes)
+    lid: 0.9,
+    squint: 0.3,
+    pupil: 0.85,
   },
   speaking: {
     look: 0.55,
@@ -1457,8 +1718,9 @@ const STATE = {
     loose: 1,
     dim: 0.8,
     wave: [2.4, 0.38],
-    // Loud and soft passages: the loud ones pick the tall bars, the soft ones the short.
-    level: (t) => 0.3 + 0.35 * Math.abs(Math.sin(t * 6.1) * Math.sin(t * 2.3 + 1)) + 0.25 * Math.max(0, Math.sin(t * 0.45)),
+    // Its own voice, made up here (speech, syllables and short breaths): the mouth moves with
+    // it (see mouth), and with the procedural art the loud passages pick the tall bars.
+    level: () => 0.12 + 0.88 * speech.level,
   },
 }
 const LABEL = {
@@ -1512,8 +1774,9 @@ function eyeGain(s, clock, level, since, breath) {
       // Steady, catching each syllable of the voice it hears.
       return 1.35 + 0.3 * listen.level + 0.35 * Math.exp(-(clock - listen.onsetAt) / 0.12)
     case 'thinking':
-      // Low and steady, calculating; now and then a short, uneven stutter (see think).
-      return clock < think.glitchUntil ? 0.7 + 0.4 * Math.sign(Math.sin(clock * 75)) : 0.7
+      // Low, calculating, lit by each pulse of thought as it arrives down the outer arteries;
+      // now and then a short, uneven stutter (see think).
+      return (clock < think.glitchUntil ? 0.7 + 0.4 * Math.sign(Math.sin(clock * 75)) : 0.7) + 0.6 * think.build * think.arrive
     case 'tooling':
       // Firm, catching each beat of the engine.
       return 1.1 + 0.3 * Math.exp(-(clock - tool.beatAt) / 0.08)
@@ -1545,9 +1808,10 @@ let beatAt = -1e9 // real time the last heartbeat left the ports
 // syllable began (the eyes catch it), and how hard the dust round the body is stirred.
 const listen = { on: 0, level: 0, pulses: [], syllable: null, flare: 0, onsetAt: -1e9, stir: 0 }
 // Thinking: how far it is given to it (eased), px its pulses have run up the outer arteries,
-// how much light has gathered at the crown (builds over ~2 s), the point it stares at (-1..1,
-// drawn on entering), and the eyes' next stutter and the end of the present one.
-const think = { on: 0, phase: 0, build: 0, stare: { x: 0.3, y: -0.25 }, glitchAt: 0, glitchUntil: 0 }
+// how far the thought has built up in the eyes (over ~2 s) and how much of a pulse is
+// arriving there now (0..1), the point it stares at (-1..1, drawn on entering), and the eyes'
+// next stutter and the end of the present one.
+const think = { on: 0, phase: 0, build: 0, arrive: 0, stare: { x: 0.3, y: -0.25 }, glitchAt: 0, glitchUntil: 0 }
 // Tooling: how far it is given to it (eased), px the engine's pulses have run up the left
 // arteries (the right run 280 behind) and how fast (px/s), when the last beat came (the eyes
 // catch it) and the last from each side (its chest disc pumps), and how the work ended
@@ -1555,8 +1819,15 @@ const think = { on: 0, phase: 0, build: 0, stare: { x: 0.3, y: -0.25 }, glitchAt
 const tool = { on: 0, phase: 0, speed: 700, beatAt: -1e9, beatL: -1e9, beatR: -1e9, result: null, cut: 0 }
 // The shoulder discs' turbines: how fast they spin (rad/s) and how far they have turned.
 const disc = { speed: 0, angle: 0 }
+// The eyes: their state as it eases (open, squint, tilt, iris size; spin how hard the rings
+// turn and angle how far), px the irises have moved in their sockets, and the next blink.
+const eyes = { open: 1, squint: 0, tilt: 0, pupil: 1, spin: 0, angle: 0, x: 0, y: 0, blinkAt: -1e9, nextBlink: 3, double: false }
+// Speaking: its own voice (made up here; the app would feed the voice it plays), how far the
+// jaw has dropped (0..1) and how bright the slit is.
+const voiceOut = createHearing({ phrase: [1.5, 4], pause: [0.25, 0.8], long: 0 })
+const speech = { level: 0, open: 0, light: 0 }
 const look = { yaw: 0, pitch: 0, body: 0, bodyPitch: 0, attn: 0 } // where the head and the trunk are turned, and how much it attends to the cursor
-const ease = { life: 0, rate: 0.5, loose: 1, dim: 0, waveRate: 1.2, waveDepth: 0.3, look: 0, follow: 1, nod: 0, breathW: 0.4, breathAmp: 1.6, breathGlow: 0, beat: 0, stare: 0, sway: 1, trunk: 1 }
+const ease = { life: 0, rate: 0.5, loose: 1, dim: 0, waveRate: 1.2, waveDepth: 0.3, look: 0, follow: 1, nod: 0, breathW: 0.4, breathAmp: 1.6, breathGlow: 0, beat: 0, stare: 0, sway: 1, trunk: 1, lid: 1, squint: 0, pupil: 1, spin: 0 }
 
 let keepPlan = false
 function setState(s, auto = false) {
@@ -1593,6 +1864,7 @@ function setState(s, auto = false) {
     $('boot').classList.remove('gone')
   }
   if (s === 'listening' && state !== 'listening') hearing.resetSim()
+  if (s === 'speaking' && state !== 'speaking') voiceOut.resetSim()
   // Set to work (again, if it already was): the engine starts.
   if (s === 'tooling') Object.assign(tool, { result: null, cut: 0, speed: 700 })
   // Each time it thinks it stares at a fresh point, off to one side and up.
@@ -1763,6 +2035,8 @@ window.__ultron = {
   clickAge: null,
   pose: null,
   artHeat: null,
+  eyes: null, // { open, squint, tilt, pupil, x, y, spin }: holds the eyes there (see eyes in the loop)
+  mouth: null, // 0..1: holds the mouth that far open
   layers,
   // Dev: the mind (its config, output(), force('crumble'), stimulate('pointerErratic'), ...).
   mind,
@@ -1888,6 +2162,11 @@ function frame(nowMs) {
   ease.stare += ((cfg.stare ?? 0) - ease.stare) * k(2.5)
   ease.sway += ((cfg.sway ?? 1) - ease.sway) * k(2)
   ease.trunk += ((cfg.trunk ?? 1) - ease.trunk) * k(2)
+  ease.lid += ((cfg.lid ?? 1) - ease.lid) * k(state === 'waking' ? 8 : 3)
+  ease.squint += ((cfg.squint ?? 0) - ease.squint) * k(3)
+  ease.pupil += ((cfg.pupil ?? 1) - ease.pupil) * k(3)
+  ease.spin += ((cfg.spin ?? 0) - ease.spin) * k(2)
+  speech.level = voiceOut.update(dt, clock, state === 'speaking').level
   levelNow += (cfg.level(clock) - levelNow) * k(10)
 
   // The mind (../mind): its mood and what it does on its own, as channels laid over the
@@ -1958,15 +2237,15 @@ function frame(nowMs) {
   }
   artHearU.value.set(listen.on, listen.level, Math.min(1.5, listen.flare))
   // Thinking: the thought goes up. Pulses leave the sources 170 px apart and run up the outer
-  // arteries to the crown at 480 px/s, quicker the hotter it runs (an irritated mind thinks
-  // hot), and light gathers at the top of the skull over ~2 s, swelling as each arrives.
-  // The eyes stutter now and then: for 0.08-0.2 s, every 0.6-2.4 s.
+  // arteries, over the temples and down the forehead into the eyes at 480 px/s, quicker the
+  // hotter it runs (an irritated mind thinks hot); each lights the eyes as it arrives, more
+  // as the thought builds up over ~2 s (see eyeGain). The eyes stutter now and then: for
+  // 0.08-0.2 s, every 0.6-2.4 s.
   const thinking = state === 'thinking'
   think.on += ((thinking ? 1 : 0) - think.on) * k(3)
   think.build += ((thinking ? 1 : 0) - think.build) * k(thinking ? 0.5 : 3)
   think.phase = (think.phase + dt * 480 * (1 + 1.2 * ch('arteries.heat'))) % (170 * 400)
-  const arrive = Math.pow(0.5 + 0.5 * Math.cos((2 * Math.PI * (outerLen - think.phase)) / 170), 4)
-  const crown = think.on * think.build * (0.35 + 0.4 * arrive)
+  think.arrive = Math.pow(0.5 + 0.5 * Math.cos((2 * Math.PI * (outerLen - think.phase)) / 170), 4)
   artThinkU.value.set(think.on, think.phase, 0)
   if (clock >= think.glitchAt) {
     think.glitchUntil = clock + 0.08 + Math.random() * 0.12
@@ -2002,8 +2281,11 @@ function frame(nowMs) {
   // Thinking it stares at a point of its own instead (the trunk turning half as far).
   const stareX = think.stare.x * ease.stare
   const stareY = think.stare.y * ease.stare
-  look.yaw += (aim((lookX * 0.44 + idleYaw) * ease.look + stareX * 0.44, mo.gaze.x * 0.44) - look.yaw) * lk
-  look.pitch += (aim((lookY * 0.2 + idlePitch) * ease.look + stareY * 0.2, mo.gaze.y * 0.2) + ease.nod + ch('head.pitch') - look.pitch) * lk
+  const yawWant = aim((lookX * 0.44 + idleYaw) * ease.look + stareX * 0.44, mo.gaze.x * 0.44)
+  const gazeY = aim((lookY * 0.2 + idlePitch) * ease.look + stareY * 0.2, mo.gaze.y * 0.2)
+  const pitchWant = gazeY + ease.nod + ch('head.pitch')
+  look.yaw += (yawWant - look.yaw) * lk
+  look.pitch += (pitchWant - look.pitch) * lk
   // The trunk turns less than the head (up to 0.14 rad, ~8 degrees) and follows later and
   // softer (about 0.55 s behind), as a body does.
   const bk = 1 - Math.exp(-dt * 1.8 * follow)
@@ -2012,6 +2294,58 @@ function frame(nowMs) {
   look.bodyPitch += (aim(((lookY * 0.05 + idleBodyPitch) * ease.look + stareY * 0.025) * ease.trunk, mo.gaze.y * 0.05) - look.bodyPitch) * bk
   // Dev: window.__ultron.pose = { yaw, pitch, body, bodyPitch } holds the head and trunk there.
   if (dev && dev.pose) Object.assign(look, dev.pose)
+
+  // The eyes. Each state sets how open they are, how narrowed and how big the irises (lid,
+  // squint, pupil, spin in STATE) and the mood moves them on from there (eyes.lid,
+  // eyes.squint, eyes.tilt, eyes.pupil): bored they droop, irritated they narrow, tilt into a
+  // glare and the irises tighten. Awake they blink now and then (every 2.5-7 s, one in seven
+  // twice); the mind's own blinks are eyes.lid dipping to 0. The irises lead the head: they
+  // jump toward where it is about to look (up to 4.5 px across, 2.5 up and down) and settle
+  // a little off centre as the head arrives. Listening, each syllable opens them a touch;
+  // working, each beat of the engine tightens them.
+  const formed = asmMode === 'up' && asm > ASM_END
+  if (clock > eyes.nextBlink) {
+    if (formed && state !== 'dormant') {
+      eyes.blinkAt = clock
+      eyes.double = Math.random() < 0.15
+    }
+    eyes.nextBlink = clock + 2.5 + Math.random() * 4.5
+  }
+  const shut = (t) => (t < 0 || t > 0.18 ? 0 : t < 0.06 ? t / 0.06 : 1 - (t - 0.06) / 0.12)
+  const blinkNow = Math.max(shut(clock - eyes.blinkAt), eyes.double ? shut(clock - eyes.blinkAt - 0.24) : 0)
+  const pulse = (at, tau) => Math.exp(-Math.max(0, clock - at) / tau)
+  const eyeWant = {
+    open: ease.lid * ch('eyes.lid') * (1 - blinkNow),
+    squint: Math.max(0, Math.min(1, ease.squint + ch('eyes.squint'))),
+    tilt: Math.max(-1, Math.min(1, ch('eyes.tilt'))),
+    pupil: Math.max(0.6, Math.min(1.4, ease.pupil * ch('eyes.pupil') * (1 + (state === 'listening' ? 0.06 * pulse(listen.onsetAt, 0.15) : 0) - (state === 'tooling' ? 0.1 * pulse(tool.beatAt, 0.08) : 0)))),
+    x: Math.max(-4.5, Math.min(4.5, (2.2 * yawWant + 6 * (yawWant - look.yaw)) / 0.44)),
+    y: Math.max(-2.5, Math.min(2.5, (1.4 * gazeY + 3 * (pitchWant - look.pitch)) / 0.2)),
+    spin: ease.spin,
+  }
+  // Dev: window.__ultron.eyes = { open, squint, tilt, pupil, x, y, spin } holds any of them.
+  if (dev && dev.eyes) Object.assign(eyeWant, dev.eyes)
+  eyes.open += (eyeWant.open - eyes.open) * k(eyeWant.open < eyes.open ? 40 : 24)
+  eyes.squint += (eyeWant.squint - eyes.squint) * k(8)
+  eyes.tilt += (eyeWant.tilt - eyes.tilt) * k(6)
+  eyes.pupil += (eyeWant.pupil - eyes.pupil) * k(10)
+  eyes.x += (eyeWant.x - eyes.x) * k(22)
+  eyes.y += (eyeWant.y - eyes.y) * k(22)
+  eyes.spin += (eyeWant.spin - eyes.spin) * k(3)
+  // The rings hunt for focus: they turn ~0.3 times a second, faster and slower by turns.
+  eyes.angle = (eyes.angle + dt * eyes.spin * (1.8 + 1.2 * Math.sin(clock * 1.3))) % (2 * Math.PI * 1000)
+  for (const st of eyeStU.value) st.set(eyes.open, eyes.squint, eyes.tilt, eyes.pupil)
+  eyeLookU.value.set(eyes.x, eyes.y)
+  eyeSpinU.value.set(eyes.angle, eyes.spin)
+
+  // The mouth. Speaking, the jaw drops with its voice (all the way at 0.7 of full voice: the
+  // art's 6 px), quick to open and a little slower to close, and the slit it opens glows with
+  // it; between phrases it shuts. Dev: window.__ultron.mouth = 0..1 holds it open.
+  const speaking = state === 'speaking'
+  const sayWant = dev && dev.mouth != null ? dev.mouth : speaking ? Math.min(1, speech.level / 0.7) : 0
+  speech.open += (sayWant - speech.open) * k(sayWant > speech.open ? 28 : 16)
+  speech.light += ((sayWant > 0 ? Math.min(1.4, 0.3 + 1.5 * sayWant) : 0) - speech.light) * k(20)
+  mouthU.value.set(speech.open * (MOUTH?.open ?? 0), speech.light)
   look.attn += ((mouse.seen ? Math.min(1, ease.look) : 0) - look.attn) * k(6)
   attnU.value.set(mx, my)
 
@@ -2070,12 +2404,19 @@ function frame(nowMs) {
   discFxU.value[2].set(spinLight + endLight, 0, blades)
   discFxU.value[3].set(spinLight + endLight, 0, blades)
 
-  // The mind's gestures. The surge's front runs up the arteries and fades past the crown
-  // (~700-950 px along them). The region crumbling or being rebuilt is whichever channel
-  // is furthest along; a rebuild that starts afresh draws its lift (8-14 px) and turn (6-15°).
+  // The mind's gestures. The surge's front runs up the arteries and fades once it has reached
+  // the eyes (from the end of the outer ones, over the next 250 px). The region crumbling or
+  // being rebuilt is whichever channel is furthest along; a rebuild that starts afresh draws
+  // its lift (8-14 px) and turn (6-15°).
   const surgeFront = (clock - surge.at) * surge.speed - 20
-  const surgeFade = Math.max(0, Math.min(1, (surgeFront - 700) / 250))
+  const surgeFade = Math.max(0, Math.min(1, (surgeFront - outerLen) / 250))
   const surgeAmp = surge.strength * (1 - surgeFade * surgeFade * (3 - 2 * surgeFade))
+  // Only at the extremes do the pulses run on into the eyes: the arteries at full heat (a
+  // voice at its loudest, an angry mind), the face at its hottest (a failure, a curt answer),
+  // a strong surge (a curt answer, a task done). Dev: window.__ultron.artReach holds it.
+  const ramp = (a, b, v) => Math.max(0, Math.min(1, (v - a) / (b - a)))
+  const extreme = dev && dev.artReach != null ? dev.artReach : Math.max(ramp(0.85, 1, artHeat), ramp(0.65, 1, ch('face.heat')), surgeAmp > 1.15 ? 1 : 0)
+  artReachU.value += (extreme - artReachU.value) * k(extreme > artReachU.value ? 8 : 1.5)
   let crumbleAt = null
   let crumbleAmt = 0
   let rebuildAt = null
@@ -2125,7 +2466,6 @@ function frame(nowMs) {
     u.uWaveDepth.value = ease.waveDepth
     if (back) u.uParallax.value = mouse.seen ? -((mouse.x - vw / 2) / vw) * 26 : 0
     u.uStir.value = back || l.stirs ? listen.stir : 0
-    u.uCrown.value = back ? 0 : crown
   }
 
   $('wake').style.opacity = state === 'offline' ? 0.55 + 0.35 * Math.sin(clock * 2.2) : 0
@@ -2137,12 +2477,18 @@ function frame(nowMs) {
   const eg = (eyeGain(state, clock, levelNow, since, breathNow) * ch('eyes.gain') + ch('eyes.boost')) * (1 - 0.85 * flicker)
   // (Quick while listening, thinking and tooling, so a blink, a syllable, a stutter or a beat reads.)
   lightsLayer.uniforms.uFade.value += (eg - lightsLayer.uniforms.uFade.value) * k(state === 'waking' ? 14 : state === 'listening' || state === 'thinking' || state === 'tooling' ? 16 : 8)
+  if (eyesLayer) eyesLayer.uniforms.uFade.value = lightsLayer.uniforms.uFade.value
 
-  // Face layers: one is up at a time, except that the voice-print crossfades fast.
+  // Face layers: one is up at a time, except that the voice-print crossfades fast (the
+  // procedural art's; the render's speaks with its mouth and keeps the face of waking).
+  // The red glow of the face shows how hot it runs: the mood (face.heat: irritation, a curt
+  // answer, a failure), whatever is done at high intensity (the arteries' heat: a loud voice,
+  // an angry mind) and its own voice as it speaks. Up to about twice as bright.
+  const faceHeat = Math.min(1.2, ch('face.heat') + 0.6 * artHeat + (speaking ? 0.3 * speech.light : 0))
   const want = {}
-  const face = FACE_OF[state]
+  const face = FACE_OF[state] === 'bars' && !faceLayers['speak-a'] ? ['idle', 1] : FACE_OF[state]
   if (face === 'bars') want[resolveFace(pickBars(clock, levelNow))] = 1
-  else if (face) want[resolveFace(face[0])] = face[1]
+  else if (face) want[resolveFace(face[0])] = face[1] * (1 + 0.9 * faceHeat)
   for (const [s, l] of Object.entries(faceLayers)) {
     const rate = /^(speak|strong)/.test(s) ? 16 : 5
     l.uniforms.uFade.value += ((want[s] ?? 0) - l.uniforms.uFade.value) * k(rate)

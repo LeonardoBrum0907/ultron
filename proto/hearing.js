@@ -5,7 +5,12 @@
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v))
 
-export function createHearing() {
+/**
+ * @param {object} [voice] the made-up voice: phrase [min, max] s, pause [min, max] s, and the
+ *   share of pauses that run long (8-11 s). The defaults are someone talking to it; the figure's
+ *   own speech (see the mouth) talks on, with short breaths between phrases.
+ */
+export function createHearing({ phrase = [1, 3.5], pause = [1.5, 4], long = 0.25 } = {}) {
   let mic = null // { ctx, stream, analyser, buf }
   let floor = null // dBFS: the room's own noise, followed slowly (from the first reading)
   let env = 0
@@ -47,18 +52,18 @@ export function createHearing() {
     return clamp01((db - floor - 8) / 26)
   }
 
-  /** A made-up voice: phrases of 1-3.5 s at 4-6 syllables a second, pauses of 1.5-4 s, sometimes 8-11. */
+  /** A made-up voice: phrases (by default 1-3.5 s) at 4-6 syllables a second, pauses (1.5-4 s, a quarter of them 8-11). */
   function simLevel(clock) {
-    if (!sim) sim = { talking: false, until: clock + 1.2 }
+    if (!sim) sim = { talking: false, until: clock + Math.min(1.2, pause[1]) }
     if (clock > sim.until) {
       sim.talking = !sim.talking
       if (sim.talking) {
-        sim.until = clock + 1 + Math.random() * 2.5
+        sim.until = clock + phrase[0] + Math.random() * (phrase[1] - phrase[0])
         sim.rate = 4 + Math.random() * 2
         sim.amp = 0.55 + Math.random() * 0.4
         sim.start = clock
         sim.syl = -1
-      } else sim.until = clock + (Math.random() < 0.25 ? 8 + Math.random() * 3 : 1.5 + Math.random() * 2.5)
+      } else sim.until = clock + (Math.random() < long ? 8 + Math.random() * 3 : pause[0] + Math.random() * (pause[1] - pause[0]))
     }
     if (!sim.talking) return 0
     const x = (clock - sim.start) * sim.rate
