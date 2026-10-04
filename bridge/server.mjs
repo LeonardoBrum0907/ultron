@@ -506,6 +506,8 @@ function elevenKey() {
 
 const VOICE_ID = process.env.ULTRON_VOICE_ID ?? 'JBFqnCBsd6RMkjVDRZzb'
 const TTS_MODEL = 'eleven_flash_v2_5'
+/** Flash and Turbo bill half a credit per character; the other models, one. */
+const TTS_CREDITS_PER_CHAR = 0.5
 
 /**
  * Credit bookkeeping for the ElevenLabs voice.
@@ -725,6 +727,9 @@ function corsFor(req) {
   if (origin) {
     headers['access-control-allow-origin'] = origin
     headers['access-control-allow-headers'] = 'content-type'
+    // The page reads what a speech request cost off these (the log panel).
+    headers['access-control-expose-headers'] =
+      'x-ultron-chars, x-ultron-credits, x-ultron-cache'
   }
   return headers
 }
@@ -762,6 +767,40 @@ const handleRequest = async (req, res) => {
         lang: LANG,
       }),
     )
+  }
+
+  // The real ElevenLabs balance, for the page's log panel. Needs a key allowed
+  // to read the user's subscription; a restricted key answers an error, which
+  // the panel shows as "saldo indisponível" and carries on without.
+  if (req.method === 'GET' && req.url === '/usage') {
+    const key = elevenKey()
+    const json = { ...cors, 'content-type': 'application/json' }
+    if (!key) {
+      res.writeHead(200, json)
+      return res.end(JSON.stringify({ error: 'no key' }))
+    }
+    try {
+      const upstream = await fetch('https://api.elevenlabs.io/v1/user/subscription', {
+        headers: { 'xi-api-key': key },
+      })
+      if (!upstream.ok) {
+        res.writeHead(200, json)
+        return res.end(JSON.stringify({ error: `elevenlabs ${upstream.status}` }))
+      }
+      const s = await upstream.json()
+      res.writeHead(200, json)
+      return res.end(
+        JSON.stringify({
+          used: s.character_count,
+          limit: s.character_limit,
+          tier: s.tier,
+          resetsAt: s.next_character_count_reset_unix ?? null,
+        }),
+      )
+    } catch (err) {
+      res.writeHead(200, json)
+      return res.end(JSON.stringify({ error: String(err?.message ?? err) }))
+    }
   }
 
   // Serve local image files to the page. Screenshots and generated art land on
@@ -923,7 +962,13 @@ const handleRequest = async (req, res) => {
     if (cached) {
       const hit = await readFile(cached).catch(() => null)
       if (hit) {
-        res.writeHead(200, { ...cors, 'content-type': 'audio/mpeg' })
+        res.writeHead(200, {
+          ...cors,
+          'content-type': 'audio/mpeg',
+          'x-ultron-chars': String(text.length),
+          'x-ultron-credits': '0',
+          'x-ultron-cache': 'hit',
+        })
         return res.end(hit)
       }
     }
@@ -976,6 +1021,9 @@ const handleRequest = async (req, res) => {
         ...cors,
         'content-type': 'audio/mpeg',
         'cache-control': 'no-cache',
+        'x-ultron-chars': String(text.length),
+        'x-ultron-credits': String(text.length * TTS_CREDITS_PER_CHAR),
+        'x-ultron-cache': 'miss',
       })
       const parts = []
       for await (const chunk of upstream.body) {
@@ -1477,6 +1525,17 @@ wss.on('connection', (socket) => {
                 type: 'done',
                 text: msg.result ?? '',
                 costUsd: msg.total_cost_usd ?? null,
+                // What the turn used, for the page's log panel.
+                usage: msg.usage
+                  ? {
+                      in: msg.usage.input_tokens ?? 0,
+                      out: msg.usage.output_tokens ?? 0,
+                      cacheRead: msg.usage.cache_read_input_tokens ?? 0,
+                      cacheWrite: msg.usage.cache_creation_input_tokens ?? 0,
+                    }
+                  : null,
+                durationMs: msg.duration_ms ?? null,
+                turns: msg.num_turns ?? null,
               })
             } else {
               console.error(
@@ -1486,6 +1545,8 @@ wss.on('connection', (socket) => {
               sendTurn({
                 type: 'error',
                 message: RESULT_FAILURES[msg.subtype] ?? RESULT_FAILURES.default,
+                reason: msg.subtype,
+                costUsd: msg.total_cost_usd ?? null,
               })
             }
             // Whatever was waiting on this turn to finish can go now. This is
