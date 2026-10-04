@@ -55,17 +55,24 @@ export const ultron: Personality = {
   rhythm: { minGap: 20, mean: 60, max: 240, rest: 0.6, hurry: { boredom: 0.8 } },
 
   expressions: [
-    // Impatience: a quicker breath and a restless head.
+    // Impatience: a quicker breath, a restless head, the lids weighing down.
     { emotion: 'boredom', ch: 'breath.rate', amount: 0.6 },
     { emotion: 'boredom', ch: 'head.restless', amount: 1.5 },
-    // Irritation runs hot in the arteries and the eyes, and sharpens every movement.
+    { emotion: 'boredom', ch: 'eyes.lid', amount: -0.35 },
+    // Irritation runs hot in the arteries, the eyes and the face, and sharpens every movement;
+    // the eyes narrow into a glare and the irises tighten.
     { emotion: 'irritation', ch: 'arteries.heat', amount: 0.35, curve: 2 },
     { emotion: 'irritation', ch: 'eyes.gain', amount: 0.4 },
     { emotion: 'irritation', ch: 'breath.rate', amount: 0.3 },
     { emotion: 'irritation', ch: 'head.follow', amount: 0.5 },
-    // Vanity holds the chin up.
+    { emotion: 'irritation', ch: 'eyes.squint', amount: 0.5 },
+    { emotion: 'irritation', ch: 'eyes.tilt', amount: 0.7 },
+    { emotion: 'irritation', ch: 'eyes.pupil', amount: -0.25 },
+    { emotion: 'irritation', ch: 'face.heat', amount: 0.6, curve: 2 },
+    // Vanity holds the chin up and looks down its nose, the lids a little lowered.
     { emotion: 'vanity', ch: 'head.pitch', amount: -0.05 },
     { emotion: 'vanity', ch: 'eyes.gain', amount: 0.15 },
+    { emotion: 'vanity', ch: 'eyes.lid', amount: -0.15 },
   ],
 
   reactions: {
@@ -81,6 +88,7 @@ export const ultron: Personality = {
       does: [
         { ch: 'gaze', target: 'awayFromFocus', weight: 0.85, attack: 0.35, hold: 10, release: 0.8 },
         { ch: 'head.pitch', to: -0.03, attack: 0.35, hold: 10, release: 0.8 },
+        { ch: 'eyes.lid', to: 0.75, attack: 0.35, hold: 10, release: 0.8 },
       ],
       after: { irritation: 0.05 },
     },
@@ -107,6 +115,7 @@ export const ultron: Personality = {
         { ch: 'gaze', target: 'center', weight: 0.9, attack: 0.8, hold: 'len', release: 1.2 },
         { ch: 'head.pitch', to: -0.08, attack: 0.8, hold: 'len', release: 1.2 },
         { ch: 'eyes.gain', to: 1.3, attack: 0.8, hold: 'len', release: 1.2 },
+        { ch: 'eyes.lid', to: 1.2, attack: 0.8, hold: 'len', release: 1.2 },
         { ch: 'head.restless', to: 0.2, attack: 0.8, hold: 'len', release: 1.2 },
       ],
     },
@@ -125,6 +134,7 @@ export const ultron: Personality = {
         { ch: 'glow', to: [0.82, 0.9], at: 1.4, attack: 0.9, hold: 0.5, release: 1.6 },
         { ch: 'head.pitch', to: [0.03, 0.06], at: 1.4, attack: 0.8, hold: 0.5, release: 1.5 },
         { ch: 'eyes.gain', to: 0.7, at: 1.4, attack: 0.8, hold: 0.5, release: 1.5 },
+        { ch: 'eyes.lid', to: 0.45, at: 1.4, attack: 0.8, hold: 0.5, release: 1.5 },
       ],
       after: { boredom: -0.1 },
     },
@@ -166,6 +176,7 @@ export const ultron: Personality = {
         { ch: 'crumble:*', pick: ['shoulderL', 'shoulderR', 'chestL', 'chestR', 'collarL', 'collarR'], to: [0.5, 0.9], attack: 0.15, hold: 'len', release: 0.35 },
         { ch: 'eyes.flicker', to: 0.5, attack: 0.1, hold: 'len', release: 0.2 },
         { ch: 'arteries.heat', to: 0.4, attack: 0.15, hold: 'len', release: 0.8 },
+        { ch: 'face.heat', to: 0.7, attack: 0.15, hold: 'len', release: 0.8 },
       ],
       after: { irritation: -0.2 },
     },
@@ -200,13 +211,13 @@ export const ultron: Personality = {
       cooldown: 5,
       does: [
         { ch: 'head.pitch', to: [-0.06, -0.04], attack: 0.25, hold: [1.2, 1.8], release: 0.8 },
-        { ch: 'eyes.gain', to: 0.1, attack: 0.04, hold: 0.07, release: 0.08 },
-        { ch: 'eyes.gain', to: 0.1, at: 0.32, attack: 0.04, hold: 0.07, release: 0.08 },
+        { ch: 'eyes.lid', to: 0, attack: 0.05, hold: 0.04, release: 0.09 },
+        { ch: 'eyes.lid', to: 0, at: 0.32, attack: 0.05, hold: 0.04, release: 0.09 },
         { ch: 'arteries.heat', to: 0.2, attack: 0.2, hold: 0.8, release: 0.8 },
       ],
     },
 
-    // Still nothing: it looks away with a scornful breath, and back at you.
+    // Still nothing: it looks away with a scornful breath, lids lowered, and back at you.
     scorn: {
       kind: 'reflex',
       on: 'quiet:voice:16',
@@ -214,44 +225,52 @@ export const ultron: Personality = {
       cooldown: 10,
       does: [
         { ch: 'gaze', target: 'awayFromFocus', weight: 0.7, attack: 0.5, hold: [1, 1.6], release: 0.9 },
+        { ch: 'eyes.lid', to: 0.6, attack: 0.4, hold: [1, 1.6], release: 0.9 },
+        { ch: 'eyes.tilt', to: 0.5, attack: 0.4, hold: [1, 1.6], release: 0.9 },
         { ch: 'body.rise', to: [0.5, 0.7], attack: 0.6, hold: 0.1, release: 1.4 },
         { ch: 'glow', to: 0.85, at: 0.6, attack: 0.6, hold: 0.3, release: 1 },
       ],
       after: { irritation: 0.1 },
     },
 
-    // A task done: pleased with itself, chin up, a flash in the eyes.
+    // A task done: pleased with itself, chin up, a smug narrowing and a flash in the eyes.
     pleased: {
       kind: 'reflex',
       on: 'taskDone',
       cooldown: 2,
       does: [
         { ch: 'head.pitch', to: [-0.07, -0.05], attack: 0.3, hold: [0.8, 1.2], release: 0.9 },
+        { ch: 'eyes.lid', to: 0.8, attack: 0.3, hold: [0.8, 1.2], release: 0.9 },
         { ch: 'eyes.boost', to: 0.8, attack: 0.08, hold: 0.1, release: 0.5 },
         { ch: 'glow', to: 1.1, attack: 0.3, hold: 0.4, release: 0.8 },
       ],
     },
 
-    // A task failed: the eyes stutter and a part of it crumbles for a moment, hot with anger.
+    // A task failed: the eyes stutter and narrow, a part of it crumbles for a moment, the face hot with anger.
     failed: {
       kind: 'reflex',
       on: 'taskFailed',
       cooldown: 2,
       does: [
         { ch: 'eyes.flicker', to: 0.7, attack: 0.04, hold: 0.4, release: 0.2 },
+        { ch: 'eyes.squint', to: 0.8, attack: 0.08, hold: 0.8, release: 0.8 },
+        { ch: 'face.heat', to: 1, attack: 0.08, hold: 0.6, release: 1 },
         { ch: 'crumble:*', pick: ['shoulderL', 'shoulderR', 'chestL', 'chestR', 'collarL', 'collarR'], to: [0.35, 0.5], at: 0.1, attack: 0.08, hold: 0.3, release: 0.3 },
         { ch: 'arteries.heat', to: 0.5, attack: 0.1, hold: 0.6, release: 1 },
       ],
     },
 
-    // The eyes stir for a third of a second, as if in a dream.
+    // The eyes stir for a third of a second, as if in a dream, the lids half lifting.
     dream: {
       kind: 'spontaneous',
       base: 1.5,
       minFreedom: 0.8,
       when: { focusStill: 3 },
       cooldown: 20,
-      does: [{ ch: 'eyes.boost', to: 0.5, attack: 0.12, hold: 0.1, release: 0.15 }],
+      does: [
+        { ch: 'eyes.boost', to: 0.5, attack: 0.12, hold: 0.1, release: 0.15 },
+        { ch: 'eyes.lid', to: 1.8, attack: 0.12, hold: 0.1, release: 0.25 },
+      ],
     },
   },
 
@@ -297,6 +316,7 @@ export const ultron: Personality = {
         does: [
           { cue: 'arteries.surge', args: { speed: 1100, strength: 1 } },
           { ch: 'head.follow', to: 1.6, attack: 0.1, hold: 0.6, release: 0.5 },
+          { ch: 'eyes.lid', to: 1.25, attack: 0.1, hold: 0.4, release: 0.6 },
           { ch: 'eyes.boost', to: 1.2, at: 0.4, attack: 0.06, hold: 0.08, release: 0.6 },
         ],
       },
@@ -308,6 +328,7 @@ export const ultron: Personality = {
           { ch: 'head.follow', to: 0.35, attack: 0.1, hold: 1.4, release: 0.6 },
           { ch: 'glow', to: 0.75, attack: 0.05, hold: 0.2, release: 1.4 },
           { ch: 'eyes.gain', to: 0.4, attack: 0.05, hold: 0.2, release: 1.4 },
+          { ch: 'eyes.lid', to: 0.5, attack: 0.05, hold: 0.2, release: 1.4 },
           { cue: 'arteries.surge', at: 0.3, args: { speed: 550, strength: 0.6 } },
         ],
       },
@@ -319,7 +340,9 @@ export const ultron: Personality = {
           { cue: 'arteries.surge', args: { speed: 1700, strength: 1.3 } },
           { ch: 'head.follow', to: 5, attack: 0.03, hold: 0.5, release: 0.6 },
           { ch: 'eyes.gain', to: 1.6, attack: 0.1, hold: 2.5, release: 1 },
+          { ch: 'eyes.squint', to: 0.5, attack: 0.1, hold: 2.5, release: 1 },
           { ch: 'arteries.heat', to: 0.5, attack: 0.15, hold: 3, release: 1.5 },
+          { ch: 'face.heat', to: 0.6, attack: 0.15, hold: 2.5, release: 1.5 },
         ],
       },
       // Vain: unhurried and majestic, chin up, the eyes lighting fully, as if granting an audience.
@@ -329,6 +352,7 @@ export const ultron: Personality = {
         does: [
           { ch: 'head.follow', to: 0.5, attack: 0.1, hold: 1.4, release: 0.6 },
           { ch: 'head.pitch', to: -0.06, attack: 1, hold: 2.5, release: 1.5 },
+          { ch: 'eyes.lid', to: 0.75, attack: 1, hold: 2.5, release: 1.5 },
           { ch: 'glow', to: 1.1, attack: 1, hold: 1, release: 1 },
           { ch: 'eyes.boost', to: 0.9, at: 0.5, attack: 0.5, hold: 0.4, release: 1 },
           { cue: 'arteries.surge', at: 0.2, args: { speed: 700, strength: 1.1 } },

@@ -132,6 +132,11 @@ O olhar segue regra própria: vence quem tem mais peso.
 | `eyes.gain` | gain | Brilho dos olhos |
 | `eyes.boost` | offset | Luz somada aos olhos (o sonho) |
 | `eyes.flicker` | 0..1 | Tremor dos olhos (aviso, falha) |
+| `eyes.lid` | gain | Abertura dos olhos: 0 fechado (uma piscada), acima de 1 arregalado |
+| `eyes.squint` | offset, 0..1 | A pálpebra de baixo sobe (olhar estreito) |
+| `eyes.tilt` | offset, -1..1 | Positivo baixa a pálpebra de cima perto do nariz (raiva); negativo, perto da têmpora |
+| `eyes.pupil` | gain | Tamanho da íris |
+| `face.heat` | offset, 0..1 | Quanto o brilho vermelho do rosto esquenta |
 | `breath.rate`, `breath.depth` | gain | Ritmo e profundidade da respiração |
 | `body.rise` | offset, 0..1 | Um fôlego fundo que ergue o corpo todo (o suspiro), fora do ritmo da respiração |
 | `glow` | gain | Brilho geral |
@@ -411,6 +416,8 @@ conteúdo.** Ele sempre cumpre o pedido e nunca recusa ou omite por causa do hum
 | `gaze.*` | Alvo de `look.yaw/pitch`, misturado com o cursor pelo peso |
 | `head.pitch`, `head.follow`, `head.restless` | `nod`, `follow`, amplitude das ondas ociosas |
 | `eyes.gain`, `eyes.flicker` | `eyeGain` |
+| `eyes.lid`, `eyes.squint`, `eyes.tilt`, `eyes.pupil` | Os olhos desenhados pelo motor (`uEyeSt`), por cima do que cada estado pede |
+| `face.heat` | Brilho das camadas do rosto, junto com o calor das artérias e a fala |
 | `breath.rate`, `breath.depth` | `breathW`, `breathAmp` (por cima dos valores do dormant de hoje) |
 | `glow` | `lifeNow` |
 | `arteries.heat`, `arteries.beat` | `artHeat` (máximo com o da voz), `uArtBeat` |
