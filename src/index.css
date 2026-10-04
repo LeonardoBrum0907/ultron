@@ -1896,3 +1896,13 @@ kbd {
   transform: scaleX(-1);
   background: #000;
 }
+
+/* Ultron himself (ui/Figure.tsx): the whole window, under everything else. */
+canvas.figure {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+}

@@ -1,12 +1,10 @@
 import { useEffect, useRef } from 'react'
-import { Scene } from './scene/Scene'
+import { Figure } from './ui/Figure'
 import { Hud } from './ui/Hud'
-import { Boot } from './ui/Boot'
-import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
 import { useStore } from './store'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
-import { createSpeaker, cycleVoice, currentVoiceName } from './lib/tts'
+import { createSpeaker, cycleVoice, currentVoiceName, diag as ttsDiag } from './lib/tts'
 import * as sfx from './lib/sfx'
 import * as music from './lib/music'
 import * as hands from './lib/hands'
@@ -31,7 +29,6 @@ import {
 } from './lib/brain'
 import { startAnalyser, micLevel, micDb } from './lib/audio'
 import { mind, startMind, isForbidden } from './lib/mind'
-import { createSyllables } from './lib/syllables'
 import { probeCapabilities } from './lib/capabilities'
 import { env } from './config'
 
@@ -151,10 +148,18 @@ export default function App() {
     // task (said once, the moment it happens); tools that all worked, a done one.
     let worked = 0
     let failed = false
+    let done = false
     const taskFailed = () => {
       if (failed) return
       failed = true
       mind.stimulate('taskFailed')
+    }
+    // Said as soon as the answer starts after the work, while the figure still
+    // shows the engine running, so its last surge lands on the work it did.
+    const taskDone = () => {
+      if (done || failed || !worked) return
+      done = true
+      mind.stimulate('taskDone')
     }
 
     try {
@@ -163,6 +168,7 @@ export default function App() {
           if (stale()) return
           if (!started) {
             started = true
+            taskDone()
             store.getState().setPhase('speaking')
             // The answer arriving is what ends the tool phase — a timer would
             // clear the readout while a slow tool was still running.
@@ -199,7 +205,7 @@ export default function App() {
       })
 
       if (stale()) return
-      if (worked && !failed) mind.stimulate('taskDone')
+      taskDone()
 
       // The bridge keeps conversation state in its own session, so history is
       // only threaded through on the direct path.
@@ -510,11 +516,9 @@ export default function App() {
       }, 200)
     }
 
-    // Long enough for the four-beat start-up sequence in Boot.tsx to play —
-    // status bar, rings, suit schematic, reactor power-up — before the live
-    // interface takes over. Kept a touch under the boot cue so the music is
-    // still rising as the reactor lands.
-    await new Promise((r) => setTimeout(r, 9200)) // boot sequence
+    // Long enough for the figure to assemble out of the dust (proto/figure.js,
+    // ASM_END), so he is whole before he goes to sleep waiting for his name.
+    await new Promise((r) => setTimeout(r, 10800)) // boot sequence
     await warming
     store.getState().setConnected(connectedLabels())
     store.getState().setVoice(currentVoiceName())
@@ -586,17 +590,9 @@ export default function App() {
   useEffect(() => {
     let raf = 0
     const stopMind = startMind()
-    const syllables = createSyllables()
-    let before = performance.now()
 
     const pump = () => {
       const st = store.getState()
-      // Each syllable heard while he listens tells the mind someone is talking;
-      // without it he takes the silence for an insult and grows impatient.
-      const now = performance.now()
-      const heard = syllables.update(micDb(), Math.min(0.1, (now - before) / 1000), now / 1000)
-      before = now
-      if (heard.onset && st.phase === 'listening') mind.stimulate('voice')
       // While speaking, follow ULTRON's own output rather than the mic, so the
       // orb lip-syncs instead of reacting to room noise.
       const lvl =
@@ -728,13 +724,22 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // What the figure hears while he listens: the shared microphone, read against
+  // the room's noise. Without one it hears silence rather than making a voice up.
+  const hears = () => {
+    const db = micDb()
+    return db == null ? { level: 0 } : { db }
+  }
+  // His own voice while he speaks. The system voice has no audio to measure (its
+  // level is a made-up wave), so the figure makes up its own voice instead.
+  const says = () =>
+    speaker.current && ttsDiag.engine !== 'system' ? { level: speaker.current.level() } : null
+
   return (
     <>
-      <Scene />
+      <Figure hears={hears} says={says} onIgnite={() => void powerOn()} />
       <Hud />
-      <Boot />
       <Diagnostics />
-      <Ignition onStart={() => void powerOn()} />
     </>
   )
 }
