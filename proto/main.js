@@ -228,6 +228,7 @@ const vert = /* glsl */ `
   uniform float uStir;      // listening: how hard the voice stirs the dust round the body (the backdrop, and the dust by the plates), 0..1
   uniform vec2  uPush[4];   // speaking: waves its stressed syllables send through the dust round the body, out from the mouth: x px out they have got, y strength
   uniform float uPushOn;    // 1 = this layer's dust feels them (the same layers as uStir)
+  uniform vec3  uPushAt;    // where they start (the mouth) in this layer's px, and z the figure's px in one of this layer's
   uniform vec3  uCheek;     // speaking: x the cheeks flaring as its voice comes out there (on the red layers; 0 on the others), yz the left cheek's red core, image px (the right mirrors it)
   uniform float uEye;       // 1 = this layer is the eyes
   uniform vec2  uEyeC[2];   // each eye's centre (the pupil at rest), image px: 0 the left on screen, 1 the right
@@ -368,16 +369,18 @@ const vert = /* glsl */ `
     // quick course of its own, a little brighter (see listen.stir).
     p += vec2(sin(uFreeTime * (6.0 + aSeed * 9.0) + ph * 7.0), cos(uFreeTime * (5.0 + aSeed * 8.0) + ph * 11.0)) * (2.0 + aJit) * uStir * e;
     // Speaking, it pushes the dust instead: each stressed syllable sends a light wave out from
-    // the mouth, and the motes it passes are shoved a few px outward, a little brighter.
+    // its mouth, in a ring all round the figure, and the motes it passes are shoved a few px
+    // outward, a little brighter. uPushAt is the mouth in this layer's own px (the backdrop has
+    // its own image and scale) and how many of the figure's px one of them is.
     float pushed = 0.0;
     if (uPushOn > 0.5) {
-      vec2 fromM = p - vec2(uHead.x, uMouthGeo.x > 0.0 ? uMouthGeo.x : uHead.y);
-      float dm = length(fromM);
+      vec2 fromM = p - uPushAt.xy;
+      float dm = length(fromM) * uPushAt.z;
       for (int i = 0; i < 4; i++) {
         float wz = (dm - uPush[i].x) / 45.0;
         pushed += uPush[i].y * exp(-wz * wz);
       }
-      p += fromM / max(dm, 1.0) * (4.0 + 0.5 * aJit) * pushed * e;
+      p += normalize(fromM + vec2(0.0, 0.001)) * (5.0 + 0.5 * aJit) / uPushAt.z * pushed * e;
     }
     // The whole figure breathes.
     p.y -= uBreath * e;
@@ -1089,6 +1092,7 @@ const common = () => ({
   uArtOut: artOutU,
   uPush: pushU,
   uPushOn: { value: 0 },
+  uPushAt: { value: new THREE.Vector3(CX, H / 2, 1) },
   uCheek: { value: new THREE.Vector3(0, ...CHEEK) },
   uDiscs: discsU,
   uDiscFx: discFxU,
@@ -1647,6 +1651,8 @@ function layout() {
   // Far enough that a current clears any edge of this window, whatever its shape.
   reachNow = 0.5 * 2.0 * Math.hypot(vw / scale, vh / scale)
   setGuides()
+  // The mouth, where speaking's waves through the dust start (see uPushAt).
+  const mouthAt = [CX, MOUTH?.seam ?? FACE.cy]
   for (const l of layers) {
     const u = l.uniforms
     u.uView.value.set(vw, vh)
@@ -1654,9 +1660,11 @@ function layout() {
     if (l.kind === 'back') {
       u.uScale.value = bs
       u.uOffset.value.set(0, -vh / 2)
+      u.uPushAt.value.set(BW / 2 + ((mouthAt[0] - CX) * scale) / bs, BH + ((mouthAt[1] - H) * scale) / bs, bs / scale)
     } else {
       u.uScale.value = scale
       u.uOffset.value.set(0, -vh / 2)
+      u.uPushAt.value.set(mouthAt[0], mouthAt[1], 1)
     }
   }
 }
@@ -1802,14 +1810,14 @@ const STATE = {
 // How it speaks: the style it answered the call in (the mind's answer, see call()), or, spoken
 // to without a call, the one its mood would pick (MOOD_TONE). Each sets its made-up voice here
 // (the app would play its own: phrase and pause s, syllables a second, loudness), how its pulses
-// run up the inner arteries (px/s, strength, width px), how loud a syllable must be to run on to
-// the eyes (reach) and to count as stressed (stress: it nods, by nod rad, and pushes the dust),
-// px it rises drawing breath (air), how hot the face runs, how bright the eyes, and its bearing
-// (laid over STATE.speaking). Reach and stress are set against the made-up voice: speaking
-// eager, about one syllable in six is stressed (0.7 a second) and one in twenty gets to the eyes
-// (0.2 a second, more in a loud phrase, none in a quiet one); curt, more of both; regal, fewer;
-// weary, a stress now and then and nothing to the eyes. The app's own voice will want them set
-// again.
+// run up the inner arteries (px/s, strength, width px), how loud a word must be to run on to
+// the eyes (reach) and a syllable to count as stressed (stress: it nods, by nod rad, and pushes
+// the dust), px it rises drawing breath (air), how hot the face runs, how bright the eyes, and
+// its bearing (laid over STATE.speaking). Reach and stress are set against the made-up voice:
+// speaking eager, it says ~1.7 words a second, one in ten gets to the eyes (more in a loud
+// phrase, none in a quiet one), and it stresses ~0.6 syllables a second; curt, more of both;
+// regal, fewer; weary, a stress now and then and nothing to the eyes. The app's own voice will
+// want them set again.
 const TONE = {
   // Neutral: clear and direct.
   eager: {
@@ -1817,8 +1825,8 @@ const TONE = {
     speed: 850,
     strength: 1,
     width: 28,
-    reach: 0.8,
-    stress: 0.72,
+    reach: 0.72,
+    stress: 0.6,
     nod: 0.02,
     air: 2,
     heat: 0,
@@ -1832,7 +1840,7 @@ const TONE = {
     strength: 0.6,
     width: 34,
     reach: 2,
-    stress: 0.5,
+    stress: 0.42,
     nod: 0.012,
     air: 2.6,
     heat: -0.2,
@@ -1845,8 +1853,8 @@ const TONE = {
     speed: 1200,
     strength: 1.25,
     width: 22,
-    reach: 0.8,
-    stress: 0.72,
+    reach: 0.72,
+    stress: 0.6,
     nod: 0.028,
     air: 1.4,
     heat: 0.4,
@@ -1859,8 +1867,8 @@ const TONE = {
     speed: 600,
     strength: 1.05,
     width: 42,
-    reach: 0.8,
-    stress: 0.68,
+    reach: 0.75,
+    stress: 0.63,
     nod: 0.015,
     air: 2.4,
     heat: 0.1,
@@ -1954,7 +1962,7 @@ let beatAt = -1e9 // real time the last heartbeat left the ports
 // pulses on their way down the outer arteries ({ at, strength, speed, last }), the one the
 // present syllable is still feeding, the sources' flare as they arrive, when the last
 // syllable began (the eyes catch it), and how hard the dust round the body is stirred.
-const listen = { on: 0, level: 0, pulses: [], syllable: null, flare: 0, onsetAt: -1e9, stir: 0 }
+const listen = { on: 0, level: 0, pulses: [], word: null, flare: 0, onsetAt: -1e9, stir: 0 }
 // Thinking: how far it is given to it (eased), px its pulses have run up the outer arteries,
 // how far the thought has built up in the eyes (over ~2 s) and how much of a pulse is
 // arriving there now (0..1), the point it stares at (-1..1, drawn on entering), and the eyes'
@@ -1976,7 +1984,7 @@ const voiceOut = createHearing({ phrase: [1.5, 4], pause: [0.35, 0.8], long: 0, 
 const speech = { level: 0, open: 0, light: 0 }
 // How it speaks (see TONE), and what its voice is doing: how far it is given to speaking
 // (eased); the voice's pulses on their way up the inner arteries ({ at, strength, speed, reach,
-// last }) and the one the present syllable still feeds; the cheeks' flare as they come out; px
+// last }) and the one the present word still feeds; the cheeks' flare as they come out; px
 // of breath it holds (drawn in each pause, let out as it talks); the last stressed syllable
 // (it nods) and whether the present one has been; the waves it pushed through the dust
 // ({ at, strength }); and when a pulse last got to the eyes.
@@ -2437,22 +2445,21 @@ function frame(nowMs) {
   listen.stir += (stirWant - listen.stir) * k(stirWant > listen.stir ? 14 : 2.5)
 
   // Speaking: its voice goes OUT, up the inner arteries (the words it heard came in down the
-  // outer ones). Each syllable it says sends a pulse from the chest, as strong as the syllable
-  // gets, at its tone's speed; the pulse comes out at the cheek beside the mouth, which flares a
-  // little, and dies there. Only a syllable louder than the tone's reach runs on up the
-  // cheekbone to the eye, lighting it as it gets there (any pulse does at the extremes). The end
-  // of a phrase sends a last, stronger one (1.3x as fast), and the cheeks flare fully as it comes
-  // out. A stressed syllable (past the tone's stress, at most one in 0.35 s) nods the head and
-  // sends a wave out through the dust round the body (420 px/s, fading in ~0.7 s).
+  // outer ones). Each word it says sends a pulse from the chest, as strong as the word gets, at
+  // its tone's speed; the pulse comes out at the cheek beside the mouth, which flares a little,
+  // and dies there. Only a word louder than the tone's reach runs on up the cheekbone to the
+  // eye, lighting it as it gets there (any pulse does at the extremes). The end of a phrase
+  // sends a last, stronger one (1.3x as fast), and the cheeks flare fully as it comes out. A
+  // stressed syllable (past the tone's stress, at most one in 0.35 s) nods the head and sends a
+  // wave out from the mouth through the dust all round the figure (420 px/s, fading in ~0.7 s).
   speak.on += ((speaking ? 1 : 0) - speak.on) * k(3)
-  if (speaking && spoken.onset) speak.pulses.push((speak.syllable = { at: clock, strength: 0, speed: tone.speed, reach: 0 }))
-  if (spoken.syllable == null) {
-    speak.syllable = null
-    speak.stressed = false
-  } else if (speak.syllable) {
-    speak.syllable.strength = (0.2 + 1.1 * spoken.syllable) * tone.strength
-    if (spoken.syllable > tone.reach) speak.syllable.reach = 1
+  if (speaking && spoken.wordOnset) speak.pulses.push((speak.word = { at: clock, strength: 0, speed: tone.speed, reach: 0 }))
+  if (spoken.word == null) speak.word = null
+  else if (speak.word) {
+    speak.word.strength = (0.2 + 1.1 * spoken.word) * tone.strength
+    if (spoken.word > tone.reach) speak.word.reach = 1
   }
+  if (spoken.syllable == null) speak.stressed = false
   if (speaking && spoken.syllable != null && !speak.stressed && spoken.syllable > tone.stress && clock - speak.stressAt > 0.35) {
     speak.stressed = true
     speak.stressAt = clock
