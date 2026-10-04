@@ -6,11 +6,15 @@
 const clamp01 = (v) => Math.max(0, Math.min(1, v))
 
 /**
- * @param {object} [voice] the made-up voice: phrase [min, max] s, pause [min, max] s, and the
- *   share of pauses that run long (8-11 s). The defaults are someone talking to it; the figure's
- *   own speech (see the mouth) talks on, with short breaths between phrases.
+ * @param {object} [opts] the made-up voice: phrase [min, max] s, pause [min, max] s, the share
+ *   of pauses that run long (8-11 s), syllables a second [min, max] and how loud a phrase is
+ *   [min, max]; and gap, the silence (s) that ends a phrase. The defaults are someone talking
+ *   to it; the figure's own speech (see speak) talks on, with short breaths between phrases,
+ *   in the tone it answered in (setVoice).
  */
-export function createHearing({ phrase = [1, 3.5], pause = [1.5, 4], long = 0.25 } = {}) {
+export function createHearing(opts = {}) {
+  const voice = { phrase: [1, 3.5], pause: [1.5, 4], long: 0.25, rate: [4, 6], amp: [0.55, 0.95], gap: 0.7, ...opts }
+  const within = ([a, b]) => a + Math.random() * (b - a)
   let mic = null // { ctx, stream, analyser, buf }
   let floor = null // dBFS: the room's own noise, followed slowly (from the first reading)
   let env = 0
@@ -54,16 +58,16 @@ export function createHearing({ phrase = [1, 3.5], pause = [1.5, 4], long = 0.25
 
   /** A made-up voice: phrases (by default 1-3.5 s) at 4-6 syllables a second, pauses (1.5-4 s, a quarter of them 8-11). */
   function simLevel(clock) {
-    if (!sim) sim = { talking: false, until: clock + Math.min(1.2, pause[1]) }
+    if (!sim) sim = { talking: false, until: clock + Math.min(1.2, voice.pause[1]) }
     if (clock > sim.until) {
       sim.talking = !sim.talking
       if (sim.talking) {
-        sim.until = clock + phrase[0] + Math.random() * (phrase[1] - phrase[0])
-        sim.rate = 4 + Math.random() * 2
-        sim.amp = 0.55 + Math.random() * 0.4
+        sim.until = clock + within(voice.phrase)
+        sim.rate = within(voice.rate)
+        sim.amp = within(voice.amp)
         sim.start = clock
         sim.syl = -1
-      } else sim.until = clock + (Math.random() < long ? 8 + Math.random() * 3 : pause[0] + Math.random() * (pause[1] - pause[0]))
+      } else sim.until = clock + (Math.random() < voice.long ? 8 + Math.random() * 3 : within(voice.pause))
     }
     if (!sim.talking) return 0
     const x = (clock - sim.start) * sim.rate
@@ -89,6 +93,10 @@ export function createHearing({ phrase = [1, 3.5], pause = [1.5, 4], long = 0.25
     resetSim() {
       sim = null
     },
+    /** Change the made-up voice (any of the options), from its next phrase on. */
+    setVoice(v) {
+      Object.assign(voice, v)
+    },
 
     /**
      * @param {number} dt seconds since the last frame
@@ -112,11 +120,11 @@ export function createHearing({ phrase = [1, 3.5], pause = [1.5, 4], long = 0.25
         if (env < peak * 0.6 || env < 0.1) armed = true
       }
       if (env > 0.12) lastVoice = clock
-      const talking = clock - lastVoice < 0.35
-      // A phrase ends after 0.7 s without a voice, if it lasted at least 0.3 s.
+      const talking = clock - lastVoice < Math.min(0.35, voice.gap)
+      // A phrase ends after a silence (gap: by default 0.7 s), if it lasted at least 0.3 s.
       let phraseEnd = false
       if (talking && phraseAt == null) phraseAt = clock
-      if (!talking && phraseAt != null && clock - lastVoice > 0.7) {
+      if (!talking && phraseAt != null && clock - lastVoice > voice.gap) {
         phraseEnd = lastVoice - phraseAt > 0.3
         phraseAt = null
       }

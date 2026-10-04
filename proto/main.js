@@ -220,10 +220,15 @@ const vert = /* glsl */ `
   uniform vec2  uArtIn[8];  // the voice's pulses coming down the outer arteries from the ears: x px from the source, y strength
   uniform vec3  uArtThink;  // thinking: x how far it is given to it 0..1, y px its pulses have run up the outer arteries
   uniform vec4  uArtTool;   // tooling: x how far it is given to it 0..1, y px the engine's pulses have run up the left arteries, z px run since the work ended (pulses that left after that are gone; <0 still working), w their gain
+  uniform vec4  uArtSpeak;  // speaking: x how far it is given to it 0..1, y its voice now 0..1, z the cheeks' flare, w px along an inner artery to the cheek, where the voice comes out
+  uniform vec4  uArtOut[8]; // its voice's pulses going up the inner arteries: x px their front has gone from the source, y strength, z 0..1 how far past the cheek it may run on (to the eye), w width px
   uniform vec4  uDiscs[4];  // the red discs (DISCS): centre xy and radius, image px; w how far its blades of light have turned, rad
   uniform vec3  uDiscFx[4]; // each disc: x extra light (-1 = dark), y how far it is drawn in 0..1, z how strong its blades are 0..1
   uniform float uSpins;     // 1 = this layer's light is the discs' (the red layers)
   uniform float uStir;      // listening: how hard the voice stirs the dust round the body (the backdrop, and the dust by the plates), 0..1
+  uniform vec2  uPush[4];   // speaking: waves its stressed syllables send through the dust round the body, out from the mouth: x px out they have got, y strength
+  uniform float uPushOn;    // 1 = this layer's dust feels them (the same layers as uStir)
+  uniform vec3  uCheek;     // speaking: x the cheeks flaring as its voice comes out there (on the red layers; 0 on the others), yz the left cheek's red core, image px (the right mirrors it)
   uniform float uEye;       // 1 = this layer is the eyes
   uniform vec2  uEyeC[2];   // each eye's centre (the pupil at rest), image px: 0 the left on screen, 1 the right
   uniform vec4  uEyeGeo;    // x the slant (rad, down toward the nose), y the outer corner's u, z the inner's, w the iris's radius (px)
@@ -362,6 +367,18 @@ const vert = /* glsl */ `
     // Listening, the voice it hears stirs the dust round the body: each mote shakes on a
     // quick course of its own, a little brighter (see listen.stir).
     p += vec2(sin(uFreeTime * (6.0 + aSeed * 9.0) + ph * 7.0), cos(uFreeTime * (5.0 + aSeed * 8.0) + ph * 11.0)) * (2.0 + aJit) * uStir * e;
+    // Speaking, it pushes the dust instead: each stressed syllable sends a light wave out from
+    // the mouth, and the motes it passes are shoved a few px outward, a little brighter.
+    float pushed = 0.0;
+    if (uPushOn > 0.5) {
+      vec2 fromM = p - vec2(uHead.x, uMouthGeo.x > 0.0 ? uMouthGeo.x : uHead.y);
+      float dm = length(fromM);
+      for (int i = 0; i < 4; i++) {
+        float wz = (dm - uPush[i].x) / 45.0;
+        pushed += uPush[i].y * exp(-wz * wz);
+      }
+      p += fromM / max(dm, 1.0) * (4.0 + 0.5 * aJit) * pushed * e;
+    }
     // The whole figure breathes.
     p.y -= uBreath * e;
 
@@ -451,6 +468,13 @@ const vert = /* glsl */ `
       p.y += uMouth.x * (uSlit > 0.5 ? aSlit : jaw) * e;
     }
     if (uSlit > 0.5) slitLight = uMouth.y;
+    // Speaking, the red of each cheek flares round its core as the voice comes out there.
+    float cheekLight = 1.0;
+    if (uCheek.x > 0.001) {
+      vec2 cl = aTarget - uCheek.yz;
+      vec2 cr = aTarget - vec2(${(W - 1).toFixed(1)} - uCheek.y, uCheek.z);
+      cheekLight = 1.0 + 1.3 * uCheek.x * (exp(-dot(cl, cl) / 900.0) + exp(-dot(cr, cr) / 900.0));
+    }
     vec2 pRest = p; // before the head and the trunk turn
 
     // looseness: 1 while a particle is dust in the cloud, 0 once it is part of the figure.
@@ -680,6 +704,29 @@ const vert = /* glsl */ `
         }
         flow += 2.6 * heard;
       } else if (aArt.y < 0.5) flow = mix(flow, 0.7, uArtHear.x) + 3.0 * uArtHear.z;
+      // Speaking, the inner arteries carry its voice OUT: each syllable it says sends a pulse up
+      // them from the chest (flaring the source as it leaves), as strong as the syllable, and it
+      // dies out at the cheek beside the mouth (uArtSpeak.w px along), where the voice comes out
+      // and the cheek flares; only the loudest run on up the cheekbone to the eye (uArtOut[i].z),
+      // or any at the extremes. Meanwhile the inner ones glow faintly with the voice and the
+      // outer ones go quiet.
+      float said = 0.0;
+      if (uArtSpeak.x > 0.001) {
+        float sk = uArtSpeak.x;
+        if (aArt.y > 1.5) flow = mix(flow, 0.35, sk);
+        else {
+          flow = mix(flow, (aArt.y < 0.5 ? 0.6 : 0.4) + 0.5 * uArtSpeak.y, sk);
+          float pastCheek = smoothstep(uArtSpeak.w - 15.0, uArtSpeak.w + 25.0, aArt.x);
+          for (int i = 0; i < 8; i++) {
+            vec4 o = uArtOut[i];
+            float oz = (aArt.x - o.x) / o.w;
+            said += o.y * exp(-oz * oz) * (1.0 - pastCheek * (1.0 - max(o.z, uArtReach)));
+          }
+          said *= sk;
+          float cz = (aArt.x - uArtSpeak.w) / 30.0;
+          flow += 2.6 * said + 2.2 * uArtSpeak.z * exp(-cz * cz) * step(0.5, aArt.y) * sk;
+        }
+      }
       float hz = (aArt.x - uArtBeat.x) / 26.0;
       flow += 2.4 * uArtBeat.y * exp(-hz * hz) * exp(-aArt.x / 120.0);
       float sz = (aArt.x - uArtSurge.x) / 45.0;
@@ -689,6 +736,7 @@ const vert = /* glsl */ `
       through = max(through, 0.7 * min(1.0, heard));
       through = max(through, 0.6 * tband * tk * step(1.5, aArt.y));
       through = max(through, 0.55 * wband * wk);
+      through = max(through, 0.65 * min(1.0, said));
       artLight = flow * mix(1.0, through, aArt.z) * mix(0.5, 1.7, uArtHeat);
     }
 
@@ -712,7 +760,7 @@ const vert = /* glsl */ `
     // Loose motes differ: a few bright, most dim, all twinkling slowly. That
     // fades out as each one becomes part of the figure.
     float mote = (0.25 + 1.5 * pow(fract(aSeed * 9.13), 3.0)) * (0.8 + 0.2 * sin(uFreeTime * (0.2 + aSeed * 0.5) + ph));
-    vAlpha = shown * mix(1.0, mote, looseness) * dim * wave * boost * flight * uLife * headLight * bodyLight * attnLight * clickLight * behind * artLight * gestureLight * discLight * eyeLight * slitLight * (1.0 + 0.6 * uStir);
+    vAlpha = shown * mix(1.0, mote, looseness) * dim * wave * boost * flight * uLife * headLight * bodyLight * attnLight * clickLight * behind * artLight * gestureLight * discLight * eyeLight * slitLight * cheekLight * (1.0 + 0.6 * uStir + 0.35 * pushed);
     // Palette swap: cyan (and its white highlights) becomes red, red stays red.
     float m = max(max(aColor.r, aColor.g), aColor.b);
     float whiteness = min(min(aColor.r, aColor.g), aColor.b) / max(m, 0.001);
@@ -758,6 +806,14 @@ let outerLen = 714 // px along an outer artery from its source to its end over t
 const artThinkU = { value: new THREE.Vector3() }
 const artToolU = { value: new THREE.Vector4(0, 0, -1, 1) }
 const artReachU = { value: 0 } // see uArtReach: eased in the frame loop
+// Speaking (see uArtSpeak, uArtOut, uPush and uCheek in the shader). The left cheek's red core,
+// read off the V2 render (canvas px; the right mirrors it), is where its voice comes out.
+const artSpeakU = { value: new THREE.Vector4() }
+const artOutU = { value: Array.from({ length: 8 }, () => new THREE.Vector4(-9999, 0, 0, 30)) }
+const pushU = { value: Array.from({ length: 4 }, () => new THREE.Vector2(-9999, 0)) }
+const CHEEK = [431, 380]
+let cheekS = 366 // px along an inner artery from its source to the cheek's core (set by build())
+let innerLen = 478 // px along an inner artery from its source to its end under the eye (set by build())
 // The four red discs, read off the V2 render (canvas px, [x, y, radius]): two by the middle of
 // the chest, on whose rims the arteries start, and two inside the shoulders, their upper part
 // under the plates. Tooling works them (see disc in the frame loop).
@@ -1029,6 +1085,11 @@ const common = () => ({
   uStir: { value: 0 },
   uArtThink: artThinkU,
   uArtTool: artToolU,
+  uArtSpeak: artSpeakU,
+  uArtOut: artOutU,
+  uPush: pushU,
+  uPushOn: { value: 0 },
+  uCheek: { value: new THREE.Vector3(0, ...CHEEK) },
   uDiscs: discsU,
   uDiscFx: discFxU,
   uSpins: { value: 0 },
@@ -1488,11 +1549,21 @@ async function build() {
     // (canvas px, left side; the right mirrors it): the voice's pulses start there.
     const EAR = [371, 268]
     const outer = arteryCourse.routes.find((rt) => rt.role === 'outer' && rt.pts[0][0] < CX)
+    const nearest = (course, [x, y]) => course.reduce((b, q) => (Math.hypot(q.x - x, q.y - y) < Math.hypot(b.x - x, b.y - y) ? q : b)).s
     if (outer) {
       const course = spline(outer.pts)
-      earS = course.reduce((b, q) => (Math.hypot(q.x - EAR[0], q.y - EAR[1]) < Math.hypot(b.x - EAR[0], b.y - EAR[1]) ? q : b)).s
+      earS = nearest(course, EAR)
       outerLen = course.at(-1).s
     }
+    // Where the inner ones pass the cheek's red core, beside the mouth: speaking, the voice
+    // comes out there.
+    const inner = arteryCourse.routes.find((rt) => rt.role === 'inner' && rt.pts[0][0] < CX)
+    if (inner) {
+      const course = spline(inner.pts)
+      cheekS = nearest(course, CHEEK)
+      innerLen = course.at(-1).s
+    }
+    artSpeakU.value.w = cheekS
   }
 
   // The eyes, drawn here so that they can move (see eyeParticles and the shader): small, still
@@ -1711,6 +1782,9 @@ const STATE = {
     squint: 0.3,
     pupil: 0.85,
   },
+  // Talking: half an eye on the cursor, breathing as one who speaks, the voice going out up the
+  // inner arteries to the cheeks, a nod on each stressed syllable (see speak). How it speaks is
+  // the tone it answered the call in (TONE, laid over this).
   speaking: {
     look: 0.55,
     life: 1,
@@ -1721,8 +1795,81 @@ const STATE = {
     // Its own voice, made up here (speech, syllables and short breaths): the mouth moves with
     // it (see mouth), and with the procedural art the loud passages pick the tall bars.
     level: () => 0.12 + 0.88 * speech.level,
+    // the steady breath gives way to a speaker's (see speak.air)
+    breath: [(2 * Math.PI) / 4, 0, 0],
   },
 }
+// How it speaks: the style it answered the call in (the mind's answer, see call()), or, spoken
+// to without a call, the one its mood would pick (MOOD_TONE). Each sets its made-up voice here
+// (the app would play its own: phrase and pause s, syllables a second, loudness), how its pulses
+// run up the inner arteries (px/s, strength, width px), how loud a syllable must be to run on to
+// the eyes (reach) and to count as stressed (stress: it nods, by nod rad, and pushes the dust),
+// px it rises drawing breath (air), how hot the face runs, how bright the eyes, and its bearing
+// (laid over STATE.speaking). Reach and stress are set against the made-up voice: speaking
+// eager, about one syllable in six is stressed (0.7 a second) and one in twenty gets to the eyes
+// (0.2 a second, more in a loud phrase, none in a quiet one); curt, more of both; regal, fewer;
+// weary, a stress now and then and nothing to the eyes. The app's own voice will want them set
+// again.
+const TONE = {
+  // Neutral: clear and direct.
+  eager: {
+    voice: { phrase: [1.5, 3.5], pause: [0.35, 0.8], rate: [4.5, 6], amp: [0.6, 0.95] },
+    speed: 850,
+    strength: 1,
+    width: 28,
+    reach: 0.8,
+    stress: 0.72,
+    nod: 0.02,
+    air: 2,
+    heat: 0,
+    eyes: 1,
+    bearing: { lid: 1.05 },
+  },
+  // Bored: slow, faint and low, the lids heavy, sighing between phrases; nothing reaches the eyes.
+  weary: {
+    voice: { phrase: [1.2, 3], pause: [0.6, 1.3], rate: [3, 4], amp: [0.35, 0.6] },
+    speed: 480,
+    strength: 0.6,
+    width: 34,
+    reach: 2,
+    stress: 0.5,
+    nod: 0.012,
+    air: 2.6,
+    heat: -0.2,
+    eyes: 0.75,
+    bearing: { lid: 0.6, life: 0.85, follow: 0.6 },
+  },
+  // Irritated: short, quick, clipped phrases, the pulses hot and hard, the eyes narrowed.
+  curt: {
+    voice: { phrase: [0.6, 1.6], pause: [0.35, 0.7], rate: [5.5, 7], amp: [0.7, 1] },
+    speed: 1200,
+    strength: 1.25,
+    width: 22,
+    reach: 0.8,
+    stress: 0.72,
+    nod: 0.028,
+    air: 1.4,
+    heat: 0.4,
+    eyes: 1.2,
+    bearing: { squint: 0.4, follow: 1.6 },
+  },
+  // Vain: unhurried and measured, the chin up, the pulses wide and slow.
+  regal: {
+    voice: { phrase: [2, 4.5], pause: [0.6, 1.2], rate: [3.2, 4.2], amp: [0.6, 0.9] },
+    speed: 600,
+    strength: 1.05,
+    width: 42,
+    reach: 0.8,
+    stress: 0.68,
+    nod: 0.015,
+    air: 2.4,
+    heat: 0.1,
+    eyes: 1.1,
+    bearing: { lid: 0.8, nod: -0.05, follow: 0.6 },
+  },
+}
+const MOOD_TONE = { irritation: 'curt', boredom: 'weary', vanity: 'regal' }
+const SPEAK_AS = Object.fromEntries(Object.entries(TONE).map(([name, t]) => [name, { ...STATE.speaking, ...t.bearing }]))
 const LABEL = {
   offline: 'offline',
   boot: 'booting',
@@ -1781,7 +1928,8 @@ function eyeGain(s, clock, level, since, breath) {
       // Firm, catching each beat of the engine.
       return 1.1 + 0.3 * Math.exp(-(clock - tool.beatAt) / 0.08)
     case 'speaking':
-      return 1 + level * 0.9
+      // With its voice, in its tone's light, flashing as a loud syllable's pulse gets to them.
+      return (1 + level * 0.9) * TONE[speak.tone].eyes + 0.35 * Math.exp(-Math.max(0, clock - speak.eyeAt) / 0.12)
     default:
       return 0.9
   }
@@ -1824,8 +1972,16 @@ const disc = { speed: 0, angle: 0 }
 const eyes = { open: 1, squint: 0, tilt: 0, pupil: 1, spin: 0, angle: 0, x: 0, y: 0, blinkAt: -1e9, nextBlink: 3, double: false }
 // Speaking: its own voice (made up here; the app would feed the voice it plays), how far the
 // jaw has dropped (0..1) and how bright the slit is.
-const voiceOut = createHearing({ phrase: [1.5, 4], pause: [0.25, 0.8], long: 0 })
+const voiceOut = createHearing({ phrase: [1.5, 4], pause: [0.35, 0.8], long: 0, gap: 0.22 })
 const speech = { level: 0, open: 0, light: 0 }
+// How it speaks (see TONE), and what its voice is doing: how far it is given to speaking
+// (eased); the voice's pulses on their way up the inner arteries ({ at, strength, speed, reach,
+// last }) and the one the present syllable still feeds; the cheeks' flare as they come out; px
+// of breath it holds (drawn in each pause, let out as it talks); the last stressed syllable
+// (it nods) and whether the present one has been; the waves it pushed through the dust
+// ({ at, strength }); and when a pulse last got to the eyes.
+const speak = { tone: 'eager', on: 0, pulses: [], syllable: null, flare: 0, air: 0, stressAt: -1e9, stressed: false, waves: [], eyeAt: -1e9 }
+let answeredAs = null // the style the mind answered the last call in, until the conversation is over
 const look = { yaw: 0, pitch: 0, body: 0, bodyPitch: 0, attn: 0 } // where the head and the trunk are turned, and how much it attends to the cursor
 const ease = { life: 0, rate: 0.5, loose: 1, dim: 0, waveRate: 1.2, waveDepth: 0.3, look: 0, follow: 1, nod: 0, breathW: 0.4, breathAmp: 1.6, breathGlow: 0, beat: 0, stare: 0, sway: 1, trunk: 1, lid: 1, squint: 0, pupil: 1, spin: 0 }
 
@@ -1864,7 +2020,16 @@ function setState(s, auto = false) {
     $('boot').classList.remove('gone')
   }
   if (s === 'listening' && state !== 'listening') hearing.resetSim()
-  if (s === 'speaking' && state !== 'speaking') voiceOut.resetSim()
+  // It speaks in the tone it answered the call in. Dev: window.__ultron.tone = 'eager' | 'weary'
+  // | 'curt' | 'regal' picks one instead.
+  if (s === 'speaking' && state !== 'speaking') {
+    const held = window.__ultron?.tone
+    speak.tone = TONE[held] ? held : (answeredAs ?? MOOD_TONE[mind.output().dominant] ?? 'eager')
+    voiceOut.setVoice(TONE[speak.tone].voice)
+    voiceOut.resetSim()
+  }
+  // Back to sleep (or gone), the conversation is over: the next one is answered afresh.
+  if (s === 'dormant' || s === 'offline') answeredAs = null
   // Set to work (again, if it already was): the engine starts.
   if (s === 'tooling') Object.assign(tool, { result: null, cut: 0, speed: 700 })
   // Each time it thinks it stares at a fresh point, off to one side and up.
@@ -1874,7 +2039,7 @@ function setState(s, auto = false) {
   stateAt = now
   mind.setContext(s)
   for (const b of document.querySelectorAll('#bar [data-s]')) b.classList.toggle('on', b.dataset.s === s)
-  $('status').textContent = LABEL[s]
+  $('status').textContent = s === 'speaking' ? `${LABEL[s]} · ${speak.tone}` : LABEL[s]
   $('wake').classList.toggle('on', s === 'offline')
 }
 
@@ -1912,7 +2077,10 @@ function call(auto = false) {
   if (!auto) cancelFlow()
   let answer = null
   const off = mind.on((e) => {
-    if (e.type === 'answer') answer = e
+    if (e.type === 'answer') {
+      answer = e
+      answeredAs = e.style
+    }
   })
   mind.stimulate('call')
   off()
@@ -2045,6 +2213,10 @@ window.__ultron = {
   // Dev: what it hears and what listening is doing with it.
   hearing,
   listen,
+  // Dev: what speaking is doing with its own voice; tone = 'eager' | 'weary' | 'curt' | 'regal'
+  // makes it speak in that one from the next time it starts speaking.
+  speak,
+  tone: null,
   // Dev: what the cursor interactions are doing right now.
   info: () => ({ click: { ...click }, look: { ...look }, clickU: clickU.value.toArray(), easeLook: ease.look, state }),
 }
@@ -2144,7 +2316,9 @@ function frame(nowMs) {
   stirTrail(dev && dev.trailAt != null ? dev.trailAt : clock, mx, my)
 
   // Ease every state parameter toward the current state's target.
-  const cfg = STATE[state]
+  const speaking = state === 'speaking'
+  const tone = TONE[speak.tone]
+  const cfg = speaking ? SPEAK_AS[speak.tone] : STATE[state]
   redNow += (redTarget - redNow) * k(3)
   ease.life += (cfg.life - ease.life) * k(state === 'waking' || state === 'boot' ? 8 : 2.5)
   ease.rate += (cfg.rate - ease.rate) * k(3)
@@ -2166,7 +2340,8 @@ function frame(nowMs) {
   ease.squint += ((cfg.squint ?? 0) - ease.squint) * k(3)
   ease.pupil += ((cfg.pupil ?? 1) - ease.pupil) * k(3)
   ease.spin += ((cfg.spin ?? 0) - ease.spin) * k(2)
-  speech.level = voiceOut.update(dt, clock, state === 'speaking').level
+  const spoken = voiceOut.update(dt, clock, state === 'speaking')
+  speech.level = spoken.level
   levelNow += (cfg.level(clock) - levelNow) * k(10)
 
   // The mind (../mind): its mood and what it does on its own, as channels laid over the
@@ -2192,7 +2367,11 @@ function frame(nowMs) {
   breathPhase += dt * shimmer * ease.breathW * ch('breath.rate')
   if (Math.floor(breathPhase / (2 * Math.PI)) > turn) beatAt = clock
   const breathNow = Math.sin(breathPhase)
-  const breathPx = breathNow * ease.breathAmp * ch('breath.depth') + ch('body.rise') * 7
+  // Speaking it breathes as one who speaks instead: in each pause it draws breath (rising by its
+  // tone's air, ~2 px, in a quarter of a second) and lets it out slowly as it talks.
+  const drawing = speaking && !spoken.talking
+  speak.air += ((drawing ? tone.air : speaking ? -0.5 * tone.air : 0) - speak.air) * k(drawing ? 7 : speaking ? 0.6 : 2)
+  const breathPx = breathNow * ease.breathAmp * ch('breath.depth') + ch('body.rise') * 7 + speak.air
   const lifeNow = ease.life * (1 + ease.breathGlow * breathNow) * ch('glow')
 
   // The arteries stay in the background until the intensity is high: a loud voice (the
@@ -2257,6 +2436,57 @@ function frame(nowMs) {
   const stirWant = Math.min(1.2, (1.1 * listen.level + 0.8 * Math.min(1, listen.flare)) * listen.on)
   listen.stir += (stirWant - listen.stir) * k(stirWant > listen.stir ? 14 : 2.5)
 
+  // Speaking: its voice goes OUT, up the inner arteries (the words it heard came in down the
+  // outer ones). Each syllable it says sends a pulse from the chest, as strong as the syllable
+  // gets, at its tone's speed; the pulse comes out at the cheek beside the mouth, which flares a
+  // little, and dies there. Only a syllable louder than the tone's reach runs on up the
+  // cheekbone to the eye, lighting it as it gets there (any pulse does at the extremes). The end
+  // of a phrase sends a last, stronger one (1.3x as fast), and the cheeks flare fully as it comes
+  // out. A stressed syllable (past the tone's stress, at most one in 0.35 s) nods the head and
+  // sends a wave out through the dust round the body (420 px/s, fading in ~0.7 s).
+  speak.on += ((speaking ? 1 : 0) - speak.on) * k(3)
+  if (speaking && spoken.onset) speak.pulses.push((speak.syllable = { at: clock, strength: 0, speed: tone.speed, reach: 0 }))
+  if (spoken.syllable == null) {
+    speak.syllable = null
+    speak.stressed = false
+  } else if (speak.syllable) {
+    speak.syllable.strength = (0.2 + 1.1 * spoken.syllable) * tone.strength
+    if (spoken.syllable > tone.reach) speak.syllable.reach = 1
+  }
+  if (speaking && spoken.syllable != null && !speak.stressed && spoken.syllable > tone.stress && clock - speak.stressAt > 0.35) {
+    speak.stressed = true
+    speak.stressAt = clock
+    speak.waves.push({ at: clock, strength: Math.min(1, spoken.syllable) })
+  }
+  if (speaking && spoken.phraseEnd) speak.pulses.push({ at: clock, strength: 1.3 * tone.strength, speed: 1.3 * tone.speed, reach: 0, last: true })
+  speak.flare *= Math.exp(-dt / 0.3)
+  const sent = (p) => (clock - p.at) * p.speed - 20
+  for (const p of speak.pulses) {
+    if (!p.out && sent(p) > cheekS) {
+      p.out = true
+      speak.flare += p.last ? 1 : 0.15 * p.strength
+    }
+    if (!p.home && sent(p) > innerLen && (p.reach || artReachU.value > 0.5)) {
+      p.home = true
+      speak.eyeAt = clock
+    }
+  }
+  speak.pulses = speak.pulses.filter((p) => sent(p) < innerLen + 60)
+  if (speak.pulses.length > 8) speak.pulses.splice(0, speak.pulses.length - 8)
+  for (let i = 0; i < 8; i++) {
+    const p = speak.pulses[i]
+    artOutU.value[i].set(p ? sent(p) : -9999, p ? p.strength : 0, p ? p.reach : 0, tone.width)
+  }
+  artSpeakU.value.set(speak.on, speaking ? speech.level : 0, Math.min(1.2, speak.flare), cheekS)
+  speak.waves = speak.waves.filter((w) => clock - w.at < 1.8)
+  for (let i = 0; i < 4; i++) {
+    const w = speak.waves[speak.waves.length - 1 - i]
+    pushU.value[i].set(w ? (clock - w.at) * 420 : -9999, w ? w.strength * Math.exp(-(clock - w.at) / 0.7) * speak.on : 0)
+  }
+  // The nod: the head dips by the tone's nod in 0.07 s and comes back up in ~0.2 s.
+  const sinceStress = clock - speak.stressAt
+  const nodNow = speaking ? tone.nod * (sinceStress < 0.07 ? sinceStress / 0.07 : Math.exp(-(sinceStress - 0.07) / 0.16)) : 0
+
   // Where the head looks: the cursor, as -1..1 across the window, is the target, and the
   // head eases toward it (1 - e^(-4.2 dt)). Off the window it looks straight ahead.
   const lookX = mouse.seen ? Math.max(-1, Math.min(1, (mouse.tx / vw) * 2 - 1)) : 0
@@ -2304,7 +2534,10 @@ function frame(nowMs) {
   // a little off centre as the head arrives. Listening, each syllable opens them a touch;
   // working, each beat of the engine tightens them.
   const formed = asmMode === 'up' && asm > ASM_END
-  if (clock > eyes.nextBlink) {
+  // Speaking it blinks in the pauses: a blink due mid-phrase waits for the next one (up to 5 s,
+  // longer than any phrase), and a pause takes one that is nearly due.
+  if (speaking && spoken.phraseEnd && clock > eyes.nextBlink - 1.5) eyes.nextBlink = clock
+  if (clock > eyes.nextBlink && !(speaking && spoken.talking && clock < eyes.nextBlink + 5)) {
     if (formed && state !== 'dormant') {
       eyes.blinkAt = clock
       eyes.double = Math.random() < 0.15
@@ -2341,7 +2574,6 @@ function frame(nowMs) {
   // The mouth. Speaking, the jaw drops with its voice (all the way at 0.7 of full voice: the
   // art's 6 px), quick to open and a little slower to close, and the slit it opens glows with
   // it; between phrases it shuts. Dev: window.__ultron.mouth = 0..1 holds it open.
-  const speaking = state === 'speaking'
   const sayWant = dev && dev.mouth != null ? dev.mouth : speaking ? Math.min(1, speech.level / 0.7) : 0
   speech.open += (sayWant - speech.open) * k(sayWant > speech.open ? 28 : 16)
   speech.light += ((sayWant > 0 ? Math.min(1.4, 0.3 + 1.5 * sayWant) : 0) - speech.light) * k(20)
@@ -2443,7 +2675,7 @@ function frame(nowMs) {
     u.uAsm.value = asm
     u.uWind.value = back ? 0 : 6.5
     u.uYaw.value = look.yaw
-    u.uPitch.value = look.pitch
+    u.uPitch.value = look.pitch + nodNow
     u.uAttnOn.value = look.attn
     u.uBodyYaw.value = look.body
     u.uBodyPitch.value = look.bodyPitch
@@ -2466,6 +2698,8 @@ function frame(nowMs) {
     u.uWaveDepth.value = ease.waveDepth
     if (back) u.uParallax.value = mouse.seen ? -((mouse.x - vw / 2) / vw) * 26 : 0
     u.uStir.value = back || l.stirs ? listen.stir : 0
+    u.uPushOn.value = back || l.stirs ? 1 : 0
+    u.uCheek.value.x = l.kind === 'veins' || l.kind === 'redlight' || l.kind === 'face' ? Math.min(1.2, speak.flare) * speak.on : 0
   }
 
   $('wake').style.opacity = state === 'offline' ? 0.55 + 0.35 * Math.sin(clock * 2.2) : 0
@@ -2475,16 +2709,18 @@ function frame(nowMs) {
   // them stutter (eyes.flicker).
   const flicker = ch('eyes.flicker') * (0.5 + 0.5 * Math.sin(clock * 47) * Math.sin(clock * 13.3))
   const eg = (eyeGain(state, clock, levelNow, since, breathNow) * ch('eyes.gain') + ch('eyes.boost')) * (1 - 0.85 * flicker)
-  // (Quick while listening, thinking and tooling, so a blink, a syllable, a stutter or a beat reads.)
-  lightsLayer.uniforms.uFade.value += (eg - lightsLayer.uniforms.uFade.value) * k(state === 'waking' ? 14 : state === 'listening' || state === 'thinking' || state === 'tooling' ? 16 : 8)
+  // (Quick while listening, thinking, tooling and speaking, so a blink, a syllable, a stutter, a
+  // beat or a pulse arriving reads.)
+  lightsLayer.uniforms.uFade.value += (eg - lightsLayer.uniforms.uFade.value) * k(state === 'waking' ? 14 : state === 'listening' || state === 'thinking' || state === 'tooling' || speaking ? 16 : 8)
   if (eyesLayer) eyesLayer.uniforms.uFade.value = lightsLayer.uniforms.uFade.value
 
   // Face layers: one is up at a time, except that the voice-print crossfades fast (the
   // procedural art's; the render's speaks with its mouth and keeps the face of waking).
   // The red glow of the face shows how hot it runs: the mood (face.heat: irritation, a curt
   // answer, a failure), whatever is done at high intensity (the arteries' heat: a loud voice,
-  // an angry mind) and its own voice as it speaks. Up to about twice as bright.
-  const faceHeat = Math.min(1.2, ch('face.heat') + 0.6 * artHeat + (speaking ? 0.3 * speech.light : 0))
+  // an angry mind) and its own voice as it speaks, in its tone (hot when curt, cooler when
+  // weary). Up to about twice as bright.
+  const faceHeat = Math.min(1.2, ch('face.heat') + 0.6 * artHeat + speak.on * tone.heat + (speaking ? 0.3 * speech.light : 0))
   const want = {}
   const face = FACE_OF[state] === 'bars' && !faceLayers['speak-a'] ? ['idle', 1] : FACE_OF[state]
   if (face === 'bars') want[resolveFace(pickBars(clock, levelNow))] = 1
