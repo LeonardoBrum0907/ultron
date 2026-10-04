@@ -239,8 +239,11 @@ ao app**.
   - **Respiração de quem fala:** em cada pausa puxa o ar (sobe ~2 px em ¼ s) e vai soltando
     enquanto fala (`speak.air`).
   - **Ênfase:** uma sílaba acentuada inclina a cabeça para baixo (~1°, `nodNow` somado ao
-    `uPitch`) e manda uma onda leve pela poeira, saindo da boca para todos os lados (`uPush`,
-    ~5 px). `uPushAt` dá a boca nas coordenadas de cada camada: o fundo tem imagem e escala
+    `uPitch`) e manda uma onda pela poeira, saindo da boca para todos os lados e atravessando
+    a janela inteira até o canto mais distante (`waveReach`, recalculado no `layout()`), a
+    650 px/s (`uPush`). É mais forte na origem (até ~9 px de empurrão) e perde força no
+    caminho: ~45% na metade e 15% na borda, onde some. A frente da onda alarga de 40 para
+    ~110 px. `uPushAt` dá a boca nas coordenadas de cada camada: o fundo tem imagem e escala
     próprias, e antes a onda nascia ao lado da figura.
   - **Piscar:** nas pausas; uma piscada que vence no meio da frase espera a próxima pausa.
   - **Tom (`TONE`):** o estilo com que atendeu o chamado continua na fala (`answeredAs`,
@@ -533,6 +536,15 @@ repositório.
   4.2). Thinking e tooling foram testados ao vivo pelo usuário, mas não têm checagem
   headless. O speaking foi verificado headless (pulsos, bochecha, aceno, fôlego, piscadas e
   ondas, nos quatro tons) e falta o teste ao vivo.
+- **Intensidade da emoção na fala** (proposta aprovada para depois, não implementada): hoje
+  a emoção só entra pelo tom, escolhido uma vez no começo da fala. A ideia é um valor
+  contínuo `intensidade` (a emoção dominante, 0..1), recalculado ao vivo durante a fala:
+  - pulsos: velocidade ×(1 + 0,8·int), força ×(1 + 0,5·int), limite para chegar aos olhos
+    descendo até ~0,2 com int alta;
+  - ondas: força ×(0,6 + 0,8·int), limite de ênfase descendo ~0,15, alcance pleno só com
+    int alta; tédio dá ondas fracas e raras;
+  - cada emoção puxa numa direção: irritação acelera e esquenta, vaidade alarga e
+    desacelera, tédio enfraquece; o tom continua sendo a base.
 - **Rosto novo** (frestas, olhos e boca): verificado headless; falta o retorno do usuário
   ao vivo.
 - **Feedback ao vivo do usuário** ainda não chegou para: dormant, reações ociosas,
