@@ -1136,6 +1136,13 @@ wss.on('connection', (socket) => {
    */
   const seenTools = new Set()
   const heldTools = new Map()
+  /**
+   * Every tool that counts as work, by id, until its result comes back. The
+   * face wants to know how each one ended — pleased with a task done, angry at
+   * one that failed — so the result is reported for all of them, announced or
+   * held, refusals included: a refused tool is work that did not get done.
+   */
+  const workTools = new Map()
 
   /**
    * Resolves when the turn in flight has actually finished.
@@ -1179,6 +1186,7 @@ wss.on('connection', (socket) => {
     // interface is the interface talking about itself, not work being done for
     // the user, and the badge would be describing the very thing they can see.
     if (name.startsWith('mcp__ultron_ui__')) return
+    if (id) workTools.set(id, name)
     if (decideTool(name)) return sendTurn({ type: 'tool', name })
     if (id) heldTools.set(id, name)
   }
@@ -1188,6 +1196,13 @@ wss.on('connection', (socket) => {
     if (name === undefined) return
     heldTools.delete(id)
     if (!failed) sendTurn({ type: 'tool', name })
+  }
+
+  const reportTool = (id, failed) => {
+    const name = workTools.get(id)
+    if (name === undefined) return
+    workTools.delete(id)
+    sendTurn({ type: 'tool_result', name, ok: !failed })
   }
 
   const session = query({
@@ -1331,6 +1346,7 @@ wss.on('connection', (socket) => {
             for (const block of blocks) {
               if (block?.type === 'tool_result') {
                 settleTool(block.tool_use_id, block.is_error === true)
+                reportTool(block.tool_use_id, block.is_error === true)
               }
             }
             break

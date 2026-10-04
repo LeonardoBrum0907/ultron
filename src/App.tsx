@@ -29,7 +29,9 @@ import {
   usingBridge,
   type Msg,
 } from './lib/brain'
-import { startAnalyser, micLevel } from './lib/audio'
+import { startAnalyser, micLevel, micDb } from './lib/audio'
+import { mind, startMind, isForbidden } from './lib/mind'
+import { createSyllables } from './lib/syllables'
 import { probeCapabilities } from './lib/capabilities'
 import { env } from './config'
 
@@ -145,6 +147,15 @@ export default function App() {
     const turnId = newId()
     let started = false
     let filled = false
+    // How the task went, for his mood: any tool that failed makes it a failed
+    // task (said once, the moment it happens); tools that all worked, a done one.
+    let worked = 0
+    let failed = false
+    const taskFailed = () => {
+      if (failed) return
+      failed = true
+      mind.stimulate('taskFailed')
+    }
 
     try {
       const { text } = await ask(said, history.current, {
@@ -180,9 +191,15 @@ export default function App() {
             spk.say(forTool(name))
           }
         },
+        onToolResult: (_name, ok) => {
+          if (stale()) return
+          if (ok) worked++
+          else taskFailed()
+        },
       })
 
       if (stale()) return
+      if (worked && !failed) mind.stimulate('taskDone')
 
       // The bridge keeps conversation state in its own session, so history is
       // only threaded through on the direct path.
@@ -201,6 +218,7 @@ export default function App() {
       if (stale()) return
       console.error(err)
       sfx.play('error')
+      taskFailed()
       store
         .getState()
         .setError(err instanceof Error ? err.message : 'Something went wrong.')
@@ -242,6 +260,10 @@ export default function App() {
 
     store.getState().setError(null)
     sfx.play('wake')
+    // He always answers, in his own mood's way. The microphone does not wait for
+    // the answer's style: it opens now, whatever the face is still doing.
+    mind.stimulate('call')
+    if (isForbidden(trailing)) mind.stimulate('forbiddenName')
 
     // "Ultron, what's happening in AI this week" in one breath. Waiting for a
     // greeting he didn't need is the most common way an assistant wastes time.
@@ -300,6 +322,7 @@ export default function App() {
       return
     }
     const said = text.replace(LEADING_NAME, '').trim()
+    if (isForbidden(said)) mind.stimulate('forbiddenName')
     if (!said) {
       listen(AWAIT_SPEECH_MS)
       return
@@ -562,9 +585,18 @@ export default function App() {
 
   useEffect(() => {
     let raf = 0
+    const stopMind = startMind()
+    const syllables = createSyllables()
+    let before = performance.now()
 
     const pump = () => {
       const st = store.getState()
+      // Each syllable heard while he listens tells the mind someone is talking;
+      // without it he takes the silence for an insult and grows impatient.
+      const now = performance.now()
+      const heard = syllables.update(micDb(), Math.min(0.1, (now - before) / 1000), now / 1000)
+      before = now
+      if (heard.onset && st.phase === 'listening') mind.stimulate('voice')
       // While speaking, follow ULTRON's own output rather than the mic, so the
       // orb lip-syncs instead of reacting to room noise.
       const lvl =
@@ -684,6 +716,7 @@ export default function App() {
 
     return () => {
       cancelAnimationFrame(raf)
+      stopMind()
       window.removeEventListener('keydown', onKey)
       clearIdle()
       if (voicePoll.current) clearInterval(voicePoll.current)

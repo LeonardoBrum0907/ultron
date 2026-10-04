@@ -8,6 +8,7 @@ let stream: MediaStream | null = null
 let ctx: AudioContext | null = null
 let analyser: AnalyserNode | null = null
 let buf: Uint8Array | null = null
+let wave: Float32Array | null = null
 
 export async function getMic(): Promise<MediaStream> {
   if (stream) return stream
@@ -31,6 +32,16 @@ export async function startAnalyser(): Promise<void> {
   analyser.smoothingTimeConstant = 0.75
   src.connect(analyser)
   buf = new Uint8Array(analyser.frequencyBinCount)
+  wave = new Float32Array(analyser.fftSize)
+}
+
+/** The microphone's loudness in dBFS, or null before the analyser is up. */
+export function micDb(): number | null {
+  if (!analyser || !wave) return null
+  analyser.getFloatTimeDomainData(wave as Float32Array<ArrayBuffer>)
+  let sum = 0
+  for (const v of wave) sum += v * v
+  return 10 * Math.log10(sum / wave.length + 1e-12)
 }
 
 /** 0..1 loudness. Returns 0 before the analyser is up. */

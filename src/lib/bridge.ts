@@ -22,6 +22,8 @@ type Frame = {
   type?: string
   delta?: string
   name?: string
+  /** tool_result: whether the tool worked. */
+  ok?: boolean
   text?: string
   message?: string
   panel?: Panel
@@ -438,6 +440,11 @@ export async function ask(
             if (!msg.name) break
             tools.push(msg.name)
             handlers.onTool(prettyToolName(msg.name))
+            break
+
+          case 'tool_result':
+            if (!msg.name) break
+            handlers.onToolResult?.(prettyToolName(msg.name), msg.ok !== false)
             break
 
           case 'done':
