@@ -23,12 +23,59 @@ import { chromeAvailable, chromeServer } from './chrome.mjs'
 import { visionServer } from './vision.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { readFileSync, realpathSync } from 'node:fs'
-import { readFile, realpath, stat } from 'node:fs/promises'
+import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
 
+// The same .env.local the Vite app reads, so the ElevenLabs key and the
+// ULTRON_* settings can live in one file instead of the shell. Variables
+// already set in the shell win: loadEnvFile never overwrites them.
+for (const name of ['.env.local', '.env']) {
+  try {
+    process.loadEnvFile(new URL(`../${name}`, import.meta.url))
+  } catch {
+    // Missing file, or a Node without loadEnvFile: the shell env still works.
+  }
+}
+
 const PORT = Number(process.env.ULTRON_BRIDGE_PORT ?? 8787)
+
+/** The language Ultron hears and speaks, as a BCP 47 tag. */
+const LANG = process.env.ULTRON_LANG ?? 'pt-BR'
+/** The ISO 639-1 code ElevenLabs takes for both speech directions. */
+const LANG_CODE = LANG.slice(0, 2).toLowerCase()
+const ENGLISH = LANG_CODE === 'en'
+
+/**
+ * Who transcribes the microphone. Scribe is billed per second of audio and
+ * the app sends it every segment it hears, wake-word chatter included, so it
+ * eats a free tier quickly; the browser recogniser costs nothing. Scribe is
+ * opt-in with ULTRON_STT=elevenlabs.
+ */
+const STT_ENGINE = process.env.ULTRON_STT ?? 'browser'
+
+/**
+ * Spoken in every language but English, appended to the system prompt. The
+ * rules above stay in English (they are tuned there); this maps their
+ * fixed phrases onto the target language instead of translating them all.
+ */
+const LANGUAGE_RULE = ENGLISH
+  ? ''
+  : `
+
+LANGUAGE. Always answer in ${LANG === 'pt-BR' ? 'Brazilian Portuguese' : LANG},
+whatever language these rules are written in. Switch only if the user speaks
+to you in another language, and switch back when they do. Every rule above
+carries over by its equivalent, not word for word:
+- "sir" is "senhor", in the same positions and with the same meanings.
+  Address the user as "o senhor", never "você".
+- "I'm afraid" is "Receio que"; "Unfortunately" is "Infelizmente".
+- "Very good, sir" is "Muito bem, senhor"; "Shall I" is "Devo".
+- "Yes." is "Sim." Never "é", "aham", "beleza" or "tá".
+- Keep the formal register: no slang, no diminutives, no "né".
+Names of files, tools, commands and code stay exactly as they are.`
 
 /**
  * A crash here takes the whole assistant down mid-sentence, and most of what
@@ -436,7 +483,7 @@ Using tools:
   is read out loud, and a URL becomes "aitch tee tee pee colon slash slash".
   Put the source in the panel as a short tag like "REUTERS" instead.
 - If a tool fails or isn't connected, one plain sentence saying so.
-- If you don't know, say you don't know.`
+- If you don't know, say you don't know.${LANGUAGE_RULE}`
 
 /**
  * ElevenLabs credentials, borrowed from the MCP server config.
@@ -458,6 +505,29 @@ function elevenKey() {
 }
 
 const VOICE_ID = process.env.ULTRON_VOICE_ID ?? 'JBFqnCBsd6RMkjVDRZzb'
+const TTS_MODEL = 'eleven_flash_v2_5'
+
+/**
+ * Credit bookkeeping for the ElevenLabs voice.
+ *
+ * Flash bills per character, so the fixed lines (fillers, "Sim, senhor?") are
+ * kept on disk after their first synthesis and replayed for free. Once the
+ * account runs dry the bridge stops calling out for the rest of the run and
+ * answers 402 at once, so the app falls back to the system voice without a
+ * failed round trip per sentence.
+ */
+const TTS_CACHE = join(homedir(), '.cache', 'ultron-tts')
+/** Only short lines repeat; an answer is never said twice. */
+const TTS_CACHE_MAX = 160
+let ttsChars = 0
+let ttsSpent = false
+
+function ttsCachePath(text) {
+  const id = createHash('sha1')
+    .update([VOICE_ID, TTS_MODEL, LANG_CODE, text].join('\n'))
+    .digest('hex')
+  return join(TTS_CACHE, `${id}.mp3`)
+}
 
 /**
  * Where /file is permitted to read from, and how big a read may get.
@@ -684,7 +754,14 @@ const handleRequest = async (req, res) => {
     // student with nothing configured still has a working assistant.
     const eleven = Boolean(elevenKey())
     res.writeHead(200, { ...cors, 'content-type': 'application/json' })
-    return res.end(JSON.stringify({ ok: true, tts: eleven, stt: eleven }))
+    return res.end(
+      JSON.stringify({
+        ok: true,
+        tts: eleven && !ttsSpent,
+        stt: eleven && STT_ENGINE === 'elevenlabs',
+        lang: LANG,
+      }),
+    )
   }
 
   // Serve local image files to the page. Screenshots and generated art land on
@@ -841,6 +918,19 @@ const handleRequest = async (req, res) => {
       res.writeHead(400, cors)
       return res.end('no text')
     }
+    const cacheable = text.length <= TTS_CACHE_MAX
+    const cached = cacheable ? ttsCachePath(text) : null
+    if (cached) {
+      const hit = await readFile(cached).catch(() => null)
+      if (hit) {
+        res.writeHead(200, { ...cors, 'content-type': 'audio/mpeg' })
+        return res.end(hit)
+      }
+    }
+    if (ttsSpent) {
+      res.writeHead(402, cors)
+      return res.end('elevenlabs credits exhausted')
+    }
     try {
       const upstream = await fetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream` +
@@ -855,7 +945,11 @@ const handleRequest = async (req, res) => {
             text,
             // Flash is the low-latency model — a conversation needs speed more
             // than it needs the last few percent of quality.
-            model_id: 'eleven_flash_v2_5',
+            model_id: TTS_MODEL,
+            // Pins the accent. Without it Flash guesses the language from
+            // each sentence, and a short line with an English tool name in it
+            // comes out in English.
+            language_code: LANG_CODE,
             voice_settings: {
               stability: 0.4,
               similarity_boost: 0.75,
@@ -865,9 +959,16 @@ const handleRequest = async (req, res) => {
         },
       )
       if (!upstream.ok) {
+        const detail = await upstream.text()
+        if (/quota_exceeded|insufficient|credits/i.test(detail)) {
+          ttsSpent = true
+          console.warn('[ultron] ElevenLabs credits exhausted; system voice from now on')
+        }
         res.writeHead(upstream.status, cors)
-        return res.end(await upstream.text())
+        return res.end(detail)
       }
+      ttsChars += text.length
+      console.log(`[ultron] tts ${text.length} chars (${ttsChars} this run)`)
 
       // Pipe it through rather than buffering. Waiting for the whole file here
       // would throw away everything the streaming endpoint just bought us.
@@ -876,8 +977,19 @@ const handleRequest = async (req, res) => {
         'content-type': 'audio/mpeg',
         'cache-control': 'no-cache',
       })
-      for await (const chunk of upstream.body) res.write(Buffer.from(chunk))
-      return res.end()
+      const parts = []
+      for await (const chunk of upstream.body) {
+        const buf = Buffer.from(chunk)
+        res.write(buf)
+        if (cached) parts.push(buf)
+      }
+      res.end()
+      if (cached) {
+        await mkdir(TTS_CACHE, { recursive: true })
+          .then(() => writeFile(cached, Buffer.concat(parts)))
+          .catch(() => {})
+      }
+      return
     } catch (err) {
       res.writeHead(502, cors)
       return res.end(String(err?.message ?? err))
@@ -937,6 +1049,7 @@ const handleRequest = async (req, res) => {
             : 'webm'
       const form = new FormData()
       form.append('model_id', 'scribe_v1')
+      form.append('language_code', LANG_CODE)
       form.append(
         'file',
         new Blob([Buffer.concat(chunks)], { type }),
@@ -1002,7 +1115,8 @@ server.listen(PORT)
 
 console.log(`[ultron] bridge listening on ws://localhost:${PORT}`)
 console.log(
-  `[ultron] speech ${elevenKey() ? 'via ElevenLabs (key from MCP config)' : 'using browser fallback voice'}`,
+  `[ultron] language ${LANG} · voice ${elevenKey() ? 'ElevenLabs' : 'browser'} · ` +
+    `hearing ${elevenKey() && STT_ENGINE === 'elevenlabs' ? 'ElevenLabs Scribe' : 'browser'}`,
 )
 console.log(`[ultron] model ${MODEL} · effort ${EFFORT}`)
 console.log(
