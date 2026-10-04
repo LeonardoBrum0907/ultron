@@ -1,5 +1,6 @@
-// What the figure hears: the real microphone (M turns it on), or, while it is off, a
-// voice made up of phrases and pauses so the listening state can be seen without one.
+// What the figure hears: a source the host feeds it (the app's microphone, or its own voice),
+// the real microphone (M turns it on), or, while neither is there, a voice made up of phrases
+// and pauses so the listening state can be seen without one.
 // Each frame update() says how loud the voice is (0..1), whether a syllable just began and
 // how loud it has got, whether someone is talking, and whether a phrase just ended.
 
@@ -10,9 +11,12 @@ const clamp01 = (v) => Math.max(0, Math.min(1, v))
  *   of pauses that run long (8-11 s), syllables a second [min, max] and how loud a phrase is
  *   [min, max]; and gap, the silence (s) that ends a phrase. The defaults are someone talking
  *   to it; the figure's own speech (see speak) talks on, with short breaths between phrases,
- *   in the tone it answered in (setVoice).
+ *   in the tone it answered in (setVoice). source, when given, is read every frame: { db } a
+ *   microphone's loudness in dBFS (read against the room's noise, as the page's own is),
+ *   { level } a loudness already 0..1, or null for none (the page's microphone or the made-up
+ *   voice then).
  */
-export function createHearing(opts = {}) {
+export function createHearing({ source, ...opts } = {}) {
   const voice = { phrase: [1, 3.5], pause: [1.5, 4], long: 0.25, rate: [4, 6], amp: [0.55, 0.95], gap: 0.7, ...opts }
   const within = ([a, b]) => a + Math.random() * (b - a)
   let mic = null // { ctx, stream, analyser, buf }
@@ -50,7 +54,11 @@ export function createHearing(opts = {}) {
     mic.analyser.getFloatTimeDomainData(mic.buf)
     let sum = 0
     for (const v of mic.buf) sum += v * v
-    const db = 10 * Math.log10(sum / mic.buf.length + 1e-12)
+    return aboveFloor(10 * Math.log10(sum / mic.buf.length + 1e-12), dt)
+  }
+
+  /** A reading in dBFS, 0..1 above the room's noise. */
+  function aboveFloor(db, dt) {
     // The floor starts at the first reading, drops at once to anything quieter and creeps
     // up over ~30 s, so speech never becomes the floor but a noisier room does.
     floor ??= db
@@ -106,6 +114,7 @@ export function createHearing(opts = {}) {
     get micOn() {
       return !!mic
     },
+    stopMic,
     /** Turn the microphone on or off; resolves to whether it is on. */
     async toggleMic() {
       if (mic) stopMic()
@@ -127,7 +136,8 @@ export function createHearing(opts = {}) {
      * @param {boolean} simulate use the made-up voice while the microphone is off
      */
     update(dt, clock, simulate) {
-      const raw = mic ? micLevel(dt) : simulate ? simLevel(clock) : 0
+      const fed = source?.()
+      const raw = fed?.db != null ? aboveFloor(fed.db, dt) : fed?.level != null ? clamp01(fed.level) : mic ? micLevel(dt) : simulate ? simLevel(clock) : 0
       // Fast up, a little slower down: one hump per syllable.
       env += (raw - env) * Math.min(1, dt * (raw > env ? 40 : 14))
       // A syllable: the voice climbs past a threshold, then must fall back off its peak
