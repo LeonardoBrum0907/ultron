@@ -226,16 +226,22 @@ ao app**.
     novo sai, as turbinas desaceleram e os discos dão um clarão. `Y` = falha: o motor
     engasga, os pulsos travam, piscam e apagam, e as turbinas param com um tranco.
 - **`speaking`** (o inverso do listening: a voz sai pelas internas):
-  - **Pulsos:** cada sílaba falada manda um pulso subindo as internas, do peito até o núcleo
+  - **Pulsos:** cada **palavra** falada (não cada sílaba, a pedido do usuário) manda um pulso
+    subindo as internas, do peito até o núcleo
     vermelho da bochecha (`CHEEK`, ao lado da boca; `cheekS` ≈ 366 px no trajeto), onde morre
-    e acende um pouco a bochecha (`uCheek`, nas camadas vermelhas). Só as sílabas mais altas
+    e acende um pouco a bochecha (`uCheek`, nas camadas vermelhas). As palavras vêm de
+    `hearing.js` (`wordOnset`, `word`): começam depois de a voz ficar abaixo de 30% do pico
+    por 0,04 s. A voz simulada agora fala em palavras de 1 a 3 sílabas, com um respiro curto
+    entre elas. Só as palavras mais altas
     seguem pela maçã do rosto até o olho e o acendem ao chegar. O fim da frase manda um último
     pulso, mais forte, e a bochecha acende inteira. As externas ficam quietas. Uniforms
     `uArtSpeak` e `uArtOut[8]`.
   - **Respiração de quem fala:** em cada pausa puxa o ar (sobe ~2 px em ¼ s) e vai soltando
     enquanto fala (`speak.air`).
   - **Ênfase:** uma sílaba acentuada inclina a cabeça para baixo (~1°, `nodNow` somado ao
-    `uPitch`) e manda uma onda leve pela poeira, saindo da boca (`uPush`, ~4 px).
+    `uPitch`) e manda uma onda leve pela poeira, saindo da boca para todos os lados (`uPush`,
+    ~5 px). `uPushAt` dá a boca nas coordenadas de cada camada: o fundo tem imagem e escala
+    próprias, e antes a onda nascia ao lado da figura.
   - **Piscar:** nas pausas; uma piscada que vence no meio da frase espera a próxima pausa.
   - **Tom (`TONE`):** o estilo com que atendeu o chamado continua na fala (`answeredAs`,
     zerado ao voltar ao dormant). Sem chamado, vale o humor dominante (`MOOD_TONE`).
