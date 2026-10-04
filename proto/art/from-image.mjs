@@ -5,7 +5,7 @@
 // Reads one front-facing picture of the figure on black and writes the same set
 // of layer PNGs the engine already knows (see generate.mjs) into proto/img-v2/.
 // Nothing here is drawn by hand: the picture's edges, shading and red lights are
-// sorted into layers, and the per-state overlays (ripples, spiral, voice bars)
+// sorted into layers, and the per-state overlays (the voice bars, the tooling's)
 // are drawn on top at positions measured from the picture. The picture is used
 // as it is, including whatever asymmetry the render has.
 //
@@ -18,7 +18,7 @@
 //   lights.png    red: the eyes and the hottest points (driven by state)
 //   chin.png      cyan: the chin emblem's outline and the edge where the head ends, a little denser than the lines
 //   plates.png    grey, not drawn: how much metal lies over whatever runs under it (the arteries), 0 open .. 1 a plate
-//   face-*.png    red (cyan for listening): what the face does in each state; the
+//   face-*.png    red: what the face does in each state; the
 //                 voice-print has several frames that the engine cycles through
 //   preview-*.png everything composited, for eyeballing
 //   backdrop.png  copied from proto/img (the figure's own art is what changed)
@@ -343,11 +343,6 @@ const faceBlob = (x, y, k = 1) => {
   const dy = (y - FACE.cy) / (FACE.sy * k)
   return Math.exp(-(dx * dx + dy * dy))
 }
-const EARS = [
-  [348, 250 + OY, -1], // the horns' middles
-  [676, 250 + OY, 1],
-]
-const NOSE_Y = 232 + OY // between the eyes, a little below
 const MOUTH_Y = 372 + OY
 const BROW_Y = 186 + OY
 
@@ -364,13 +359,6 @@ function dab(buf, x, y, c, k, rad) {
     }
   }
 }
-
-// The cheek sockets, measured off the render: the tooling state draws dashed
-// rings in them, like something being worked out.
-const SOCKETS = [
-  [427, 310 + OY],
-  [605, 310 + OY],
-]
 
 // Several frames of the voice-print per intensity: the engine cycles through
 // them at random while the figure speaks, so the bars dance. [gain, seed]
@@ -522,56 +510,13 @@ function faceLayer(state) {
       const wash = lineV[i] * 0.45 + fillV[i] * 0.05 + dark * 1.0
       paint(f, i, ORANGE, wash * b * cfg.power)
       paint(f, i, HOT, dark * b * b * cfg.power * 0.25)
-
-      if (state === 'thinking') {
-        const dx = x - FACE.cx
-        const dy = y - NOSE_Y
-        const r = Math.hypot(dx, dy)
-        const ang = Math.atan2(dy, dx)
-        // A spiral drawing in toward a hot point: the picture of attention.
-        const sp = Math.pow(0.5 + 0.5 * Math.cos(r / 5.2 - ang * 2.0), 5)
-        paint(f, i, ORANGE, sp * 0.55 * Math.exp(-r / 95))
-        paint(f, i, HOT, Math.exp(-(r * r) / 140) * 1.9)
-        paint(f, i, ORANGE, Math.exp(-(r * r) / 1100) * 0.7)
-      }
     }
   }
 
-  if (state === 'listening') {
-    // Waves arriving at the horns from either side.
-    for (const [ex, ey, side] of EARS) {
-      for (let y = 0; y < H; y++) {
-        for (let x = 0; x < W; x++) {
-          const d = Math.hypot(x - ex, y - ey)
-          if (d > 230 || d < 22) continue
-          if (side * (x - ex) < -6) continue // only the open side
-          const ring = Math.pow(0.5 + 0.5 * Math.cos(d / 5.2 - 0.3), 7)
-          const k = ring * Math.exp(-d / 105) * 0.55
-          const i = y * W + x
-          f[i * 3] += 0.55 * k
-          f[i * 3 + 1] += 0.95 * k
-          f[i * 3 + 2] += 1.0 * k
-        }
-      }
-    }
-  }
-
-  if (state === 'tooling') {
-    // Dashed rings in the cheek sockets and a dotted read-out down the nose.
-    for (const [sx, sy] of SOCKETS) {
-      for (const [rad, dashes, phase] of [
-        [22, 14, 0],
-        [34, 20, 0.5],
-      ]) {
-        for (let a = 0; a < 360; a += 1.5) {
-          const ang = (a * Math.PI) / 180
-          if (Math.cos(ang * dashes + phase * 6.28) < 0.15) continue
-          dab(f, sx + Math.cos(ang) * rad, sy + Math.sin(ang) * rad * 1.25, ORANGE, 0.55, 1.05)
-        }
-      }
-    }
-    for (let y = BROW_Y + 6; y < 320 + OY; y += 6) dab(f, CX, y, ORANGE, 0.7, 1.1)
-  }
+  // (Listening had waves arriving at the horns, thinking a spiral drawing in between the
+  // eyes, tooling dashed rings in the cheek sockets and a dotted read-out down the nose; the
+  // user had them all removed. The voice it hears now comes in down the arteries, the
+  // thought goes up them to the crown, and work beats through them: see the engine.)
 
   if (BARS[state]) {
     // A voice-print across the lower face: mirrored bars, tall in the middle.

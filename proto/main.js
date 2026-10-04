@@ -12,6 +12,7 @@ import { browserStorage, saveOnHide } from '../mind/adapters/storage-browser.ts'
 import { attachPointer } from '../mind/adapters/pointer.ts'
 import { createPanel } from '../mind/panel/panel.ts'
 import { ultron } from '../mind/personalities/ultron.ts'
+import { createHearing } from './hearing.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -23,6 +24,8 @@ await mind.restore()
 saveOnHide(mind)
 attachPointer(mind)
 createPanel(mind, { key: 'e' })
+// What it hears: the microphone (M), or a made-up voice while that is off.
+const hearing = createHearing()
 
 /* ------------------------------------------------------------------ setup */
 
@@ -173,6 +176,15 @@ const vert = /* glsl */ `
   uniform vec3  uArtBeat;   // the sleeping heartbeat: x px its front has gone from the ports, y how strong it is, z how much of the steady flow is left (0 asleep)
   uniform float uBreath;    // px the figure has risen as it breathes in (negative breathing out)
   uniform vec3  uArtSurge;  // one strong pulse up all four arteries: x px its front has gone, y strength
+  uniform vec3  uArtHear;   // listening: x how far it is given to it 0..1, y the voice now 0..1, z the sources' flare
+  uniform vec2  uArtIn[8];  // the voice's pulses coming down the outer arteries from the ears: x px from the source, y strength
+  uniform vec3  uArtThink;  // thinking: x how far it is given to it 0..1, y px its pulses have run up the outer arteries
+  uniform vec4  uArtTool;   // tooling: x how far it is given to it 0..1, y px the engine's pulses have run up the left arteries, z px run since the work ended (pulses that left after that are gone; <0 still working), w their gain
+  uniform vec4  uDiscs[4];  // the red discs (DISCS): centre xy and radius, image px; w how far its blades of light have turned, rad
+  uniform vec3  uDiscFx[4]; // each disc: x extra light (-1 = dark), y how far it is drawn in 0..1, z how strong its blades are 0..1
+  uniform float uSpins;     // 1 = this layer's light is the discs' (the red layers)
+  uniform float uCrown;     // thinking: light gathered at the top of the skull, 0..1
+  uniform float uStir;      // listening: how hard the voice stirs the dust round the body (the backdrop, and the dust by the plates), 0..1
   uniform vec4  uCrumbleAt; // the region crumbling to dust: centre and radii, image px
   uniform float uCrumble;   // how far it has gone to dust, 0..1
   uniform vec4  uRebuildAt; // the plate lifting off and re-seating: centre and radii, image px
@@ -181,9 +193,6 @@ const vert = /* glsl */ `
   uniform float uRed;       // 0 cyan, 1 everything that was cyan goes red
   uniform float uLife;      // brightness of the layer: low when dormant
   uniform float uLoose;     // how far particles wander at rest, relative
-  uniform float uPulse;     // image y of a band of light travelling over the figure
-  uniform float uPulseW;    // its half-width, image px
-  uniform float uPulseA;    // how much brighter the band makes things (0 = no band)
   uniform float uWaveRate;  // speed of the energy running up the veins
   uniform float uWaveDepth; // how deep its troughs go
   uniform float uFreeTime;  // real seconds: the clock the loose cloud drifts on
@@ -283,6 +292,9 @@ const vert = /* glsl */ `
     // Life at rest: everything wanders a little, the dust a lot.
     float ph = aSeed * 6.2831;
     p += vec2(sin(uTime * (0.4 + aSeed * 0.9) + ph * 3.0), cos(uTime * (0.5 + aSeed * 0.7) + ph * 5.0)) * aJit * uLoose * e;
+    // Listening, the voice it hears stirs the dust round the body: each mote shakes on a
+    // quick course of its own, a little brighter (see listen.stir).
+    p += vec2(sin(uFreeTime * (6.0 + aSeed * 9.0) + ph * 7.0), cos(uFreeTime * (5.0 + aSeed * 8.0) + ph * 11.0)) * (2.0 + aJit) * uStir * e;
     // The whole figure breathes.
     p.y -= uBreath * e;
 
@@ -309,6 +321,25 @@ const vert = /* glsl */ `
       vec2 away = normalize(uRebuildAt.xy - vec2(${CX.toFixed(1)}, 700.0) + vec2(0.0, 0.001));
       p += (turned - rel) + away * uRebuild.y * a;
       gestureLight *= 1.0 + 0.5 * a; // the loose plate catches the light
+    }
+    // THE DISCS, four red ones (DISCS): two by the middle of the chest, where the arteries
+    // start, and two inside the shoulders. Working, the chest's pump like pistons, drawing in
+    // and lighting up on each beat, and the shoulders' spin like turbines. Only their red light
+    // takes part (uSpins), and a turbine's particles stay where the art has them (half of its
+    // rings is under the plate, and turning them broke the circle): three blades of light run
+    // round them instead (uDiscs[i].w: how far they have turned), passing behind the plate
+    // where there is nothing to light. uDiscFx[i]: x extra light, y how far drawn in, z how
+    // strong the blades are.
+    float discLight = 1.0;
+    if (uSpins > 0.5) {
+      for (int i = 0; i < 4; i++) {
+        vec2 rel = aTarget - uDiscs[i].xy;
+        float m = (1.0 - smoothstep(uDiscs[i].z * 0.9, uDiscs[i].z, length(rel))) * e;
+        if (m <= 0.0) continue;
+        p -= (p - uDiscs[i].xy) * 0.1 * uDiscFx[i].y * m;
+        float blade = pow(0.5 + 0.5 * cos(3.0 * (atan(rel.y, rel.x) - uDiscs[i].w)), 6.0);
+        discLight *= max(0.0, 1.0 + uDiscFx[i].x * m) * (1.0 + uDiscFx[i].z * m * (2.2 * blade - 0.5));
+      }
     }
     vec2 pRest = p; // before the head and the trunk turn
 
@@ -505,12 +536,45 @@ const vert = /* glsl */ `
       float band = pow(0.5 + 0.5 * cos(6.2831 * k), 8.0);
       float beat = pow(0.5 + 0.5 * cos(6.2831 * uArtPhase / 260.0), 6.0);
       float flow = mix(0.5, aArt.y < 0.5 ? 0.75 + 0.6 * beat : 0.5 + 1.1 * band, uArtBeat.z);
+      // Thinking, the thought goes UP: quick pulses leave the sources 170 px apart (each
+      // one flaring them) and run up the outer arteries, over the temples to the crown,
+      // shining through the plates as they pass. The inner ones go quiet.
+      float tk = uArtThink.x;
+      float tband = pow(0.5 + 0.5 * cos(6.2831 * (aArt.x - uArtThink.y) / 170.0), 10.0);
+      if (aArt.y > 1.5) flow = mix(flow, 0.35 + 2.2 * tband, tk);
+      else if (aArt.y > 0.5) flow = mix(flow, 0.4, 0.6 * tk);
+      else flow = mix(flow, 0.7 + 1.2 * tband, tk);
+      // Tooling, a machine at work: the chest beats like an engine, each beat sending a short
+      // pulse up all four arteries of one side (flaring its source as it leaves), left and
+      // right in turn like pistons: the right's run 280 px, half a beat, behind. When the
+      // work ends no more leave (a pulse at s left when the engine had run s px less), and
+      // the gain lets a failure make the stalled ones flicker out.
+      float wk = uArtTool.x;
+      float wside = step(${CX.toFixed(1)}, aTarget.x);
+      float wband = pow(0.5 + 0.5 * cos(6.2831 * (aArt.x - uArtTool.y + 280.0 * wside) / 560.0), 24.0) * step(uArtTool.z, aArt.x) * uArtTool.w;
+      flow = mix(flow, 0.35 + 2.4 * wband, wk);
+      // Listening, the outer arteries, which pass the ears at the temples, carry the voice
+      // IN: their outward flow gives way to a faint glow that follows the voice, and each
+      // syllable sends a pulse down them from the ear to the source, as strong as it was.
+      // The sources stop flaring outward and flare instead as the words arrive (uArtHear.z).
+      float heard = 0.0;
+      if (aArt.y > 1.5) {
+        flow = mix(flow, 0.45 + 0.6 * uArtHear.y, uArtHear.x);
+        for (int i = 0; i < 8; i++) {
+          float iz = (aArt.x - uArtIn[i].x) / 30.0;
+          heard += uArtIn[i].y * exp(-iz * iz);
+        }
+        flow += 2.6 * heard;
+      } else if (aArt.y < 0.5) flow = mix(flow, 0.7, uArtHear.x) + 3.0 * uArtHear.z;
       float hz = (aArt.x - uArtBeat.x) / 26.0;
       flow += 2.4 * uArtBeat.y * exp(-hz * hz) * exp(-aArt.x / 120.0);
       float sz = (aArt.x - uArtSurge.x) / 45.0;
       float surge = uArtSurge.y * exp(-sz * sz);
       flow += 3.0 * surge;
       float through = mix(mix(0.06, 0.65, uArtHeat), 0.95, min(1.0, surge));
+      through = max(through, 0.7 * min(1.0, heard));
+      through = max(through, 0.6 * tband * tk * step(1.5, aArt.y));
+      through = max(through, 0.55 * wband * wk);
       artLight = flow * mix(1.0, through, aArt.z) * mix(0.5, 1.7, uArtHeat);
     }
 
@@ -530,20 +594,20 @@ const vert = /* glsl */ `
 
     // Brighter while in flight, so the assembly reads as a stream of light.
     float flight = 1.0 + (1.0 - abs(e * 2.0 - 1.0)) * (1.0 - step(0.999, t)) * 1.2;
-    // A band of light sweeping over the figure (waking, tooling).
-    float pz = (p.y - uPulse) / uPulseW;
-    float pulse = uPulseA * exp(-pz * pz);
     float shown = mix(1.0, smoothstep(0.0, 0.12, t), uRamp);
     // Loose motes differ: a few bright, most dim, all twinkling slowly. That
     // fades out as each one becomes part of the figure.
     float mote = (0.25 + 1.5 * pow(fract(aSeed * 9.13), 3.0)) * (0.8 + 0.2 * sin(uFreeTime * (0.2 + aSeed * 0.5) + ph));
-    vAlpha = shown * mix(1.0, mote, looseness) * dim * wave * boost * flight * uLife * (1.0 + pulse) * headLight * bodyLight * attnLight * clickLight * behind * artLight * gestureLight;
+    // Thinking, light gathers at the top of the skull, where the outer arteries end.
+    vec2 cz = (aTarget - vec2(${CX.toFixed(1)}, 150.0)) / vec2(115.0, 62.0);
+    float crownLight = 1.0 + uCrown * exp(-dot(cz, cz));
+    vAlpha = crownLight * shown * mix(1.0, mote, looseness) * dim * wave * boost * flight * uLife * headLight * bodyLight * attnLight * clickLight * behind * artLight * gestureLight * discLight * (1.0 + 0.6 * uStir);
     // Palette swap: cyan (and its white highlights) becomes red, red stays red.
     float m = max(max(aColor.r, aColor.g), aColor.b);
     float whiteness = min(min(aColor.r, aColor.g), aColor.b) / max(m, 0.001);
     vec3 redC = mix(vec3(1.0, 0.13, 0.1), vec3(1.0, 0.72, 0.62), clamp(whiteness * 1.4, 0.0, 1.0)) * m;
     vColor = mix(aColor, redC, uRed);
-    gl_PointSize = max(1.0, aSize * uPix * (1.0 + uLevel * 0.25 * uIsFace + pulse * 0.3) * mix(1.0, 0.7 + 0.8 * fract(aSeed * 5.7), looseness) * (1.0 + (clickLight - 1.0) * 0.1) * (1.0 + (artLight - 1.0) * 0.2));
+    gl_PointSize = max(1.0, aSize * uPix * (1.0 + uLevel * 0.25 * uIsFace) * mix(1.0, 0.7 + 0.8 * fract(aSeed * 5.7), looseness) * (1.0 + (clickLight - 1.0) * 0.1) * (1.0 + (artLight - 1.0) * 0.2));
   }
 `
 
@@ -574,6 +638,25 @@ const headU = { value: new THREE.Vector4(FACE.cx, FACE.cy - 0.33 * FACE.sy, 1.8 
 const neckU = { value: new THREE.Vector2(FACE.cy + 1.36 * FACE.sy, FACE.cy + 1.36 * FACE.sy + 100) }
 const clickU = { value: new THREE.Vector4(0, 0, 0, 99) }
 const attnU = { value: new THREE.Vector2(-9999, -9999) }
+// Listening (see uArtHear and uArtIn in the shader).
+const artHearU = { value: new THREE.Vector3() }
+const artInU = { value: Array.from({ length: 8 }, () => new THREE.Vector2(-9999, 0)) }
+let earS = 540 // px along an outer artery from its source to where it passes the ear (set by build())
+let outerLen = 690 // px along an outer artery from its source to its end at the crown (set by build())
+// Thinking and tooling (see uArtThink and uArtTool in the shader).
+const artThinkU = { value: new THREE.Vector3() }
+const artToolU = { value: new THREE.Vector4(0, 0, -1, 1) }
+// The four red discs, read off the V2 render (canvas px, [x, y, radius]): two by the middle of
+// the chest, on whose rims the arteries start, and two inside the shoulders, their upper part
+// under the plates. Tooling works them (see disc in the frame loop).
+const DISCS = [
+  [440, 766, 42],
+  [583, 766, 42],
+  [168, 778, 38],
+  [855, 778, 38],
+]
+const discsU = { value: DISCS.map(([x, y, r]) => new THREE.Vector4(x, y, r, 0)) }
+const discFxU = { value: DISCS.map(() => new THREE.Vector3()) }
 
 // The currents. Five of them, one per part of the figure; the figure is built
 // bottom to top, a part at a time. Each current gathers its particles from one
@@ -817,6 +900,15 @@ const common = () => ({
   uArtBeat: { value: new THREE.Vector3(-9999, 0, 1) },
   uBreath: { value: 0 },
   uArtSurge: { value: new THREE.Vector3(-9999, 0, 0) },
+  uArtHear: artHearU,
+  uArtIn: artInU,
+  uStir: { value: 0 },
+  uArtThink: artThinkU,
+  uArtTool: artToolU,
+  uDiscs: discsU,
+  uDiscFx: discFxU,
+  uSpins: { value: 0 },
+  uCrown: { value: 0 },
   uCrumbleAt: { value: new THREE.Vector4(0, 0, 1, 1) },
   uCrumble: { value: 0 },
   uRebuildAt: { value: new THREE.Vector4(0, 0, 1, 1) },
@@ -826,9 +918,6 @@ const common = () => ({
   uFade: { value: 1 },
   uLife: { value: 1 },
   uLoose: { value: 1 },
-  uPulse: { value: -9999 },
-  uPulseW: { value: 60 },
-  uPulseA: { value: 0 },
   uWaveRate: { value: 2.4 },
   uWaveDepth: { value: 0.38 },
   uFreeTime: { value: 0 },
@@ -1122,11 +1211,14 @@ async function build() {
     seed: 104,
     jitter: (p, r) => 0.15 + r() * 0.5,
   })
-  makeLayer(sample(dust, BUDGET.dust, { floor: 0.06, bias: 0.3, seed: 15 }), {
+  // The dust shed round the outline, close to the plates. Listening, the voice stirs it
+  // along with the backdrop (see listen.stir).
+  const dustLayer = makeLayer(sample(dust, BUDGET.dust, { floor: 0.06, bias: 0.3, seed: 15 }), {
     ...figure,
     seed: 105,
     jitter: (p, r) => 2 + r() * 6,
   })
+  dustLayer.stirs = true
 
   // Red light spilling off the figure. It is already red, so the palette swap leaves
   // it be (uRed is only driven on the cyan layers, see the frame loop). No flare runs
@@ -1180,6 +1272,15 @@ async function build() {
       attrs: { aArt: [3, (p) => [p.s, p.role, p.cover]] },
     })
     art.uniforms.uArt.value = 1
+    // Where the outer arteries pass the ears, at the top of the red louvres on the temple
+    // (canvas px, left side; the right mirrors it): the voice's pulses start there.
+    const EAR = [371, 268]
+    const outer = arteryCourse.routes.find((rt) => rt.role === 'outer' && rt.pts[0][0] < CX)
+    if (outer) {
+      const course = spline(outer.pts)
+      earS = course.reduce((b, q) => (Math.hypot(q.x - EAR[0], q.y - EAR[1]) < Math.hypot(b.x - EAR[0], b.y - EAR[1]) ? q : b)).s
+      outerLen = course.at(-1).s
+    }
   }
 
   const states = {}
@@ -1304,9 +1405,51 @@ const STATE = {
     beat: 1,
   },
   waking: { look: 1, life: 1.1, rate: 1.4, loose: 0.8, dim: 0.8, wave: [3.4, 0.5], level: (t) => 0.14 + 0.1 * Math.sin(t * 7.3) },
-  listening: { look: 1.1, life: 1, rate: 1, loose: 1, dim: 0.3, wave: [2.4, 0.38], level: (t) => 0.1 + 0.08 * Math.sin(t * 2.2) },
-  thinking: { look: 1, life: 1, rate: 1, loose: 1, dim: 0.72, wave: [2.4, 0.38], level: (t) => 0.1 + 0.1 * Math.sin(t * 3.1) },
-  tooling: { look: 1, life: 1.05, rate: 1.25, loose: 0.9, dim: 0.6, wave: [7, 0.8], level: () => 0.06 },
+  // Attentive, and from above: chin up, the head on the cursor at once, the breath short and
+  // held (3 s, 1 px). The voice it hears comes in at the ears and down the outer arteries (see listen).
+  listening: {
+    look: 1.1,
+    life: 1,
+    rate: 1,
+    loose: 1,
+    dim: 0.3,
+    wave: [2.4, 0.38],
+    level: (t) => 0.1 + 0.08 * Math.sin(t * 2.2),
+    follow: 1.7,
+    nod: -0.035,
+    breath: [(2 * Math.PI) / 3, 1, 0],
+  },
+  // Absent, calculating: the cursor is let go and it stares at a vague point off to one side
+  // and up (stare), the head nearly still; the breath all but stops and the dust settles.
+  // What moves is the thought, going up the outer arteries to the crown (see think).
+  thinking: {
+    look: 0,
+    life: 1,
+    rate: 0.8,
+    loose: 0.4,
+    dim: 0.72,
+    wave: [1.2, 0.25],
+    level: () => 0.08,
+    follow: 0.6,
+    breath: [(2 * Math.PI) / 6, 0.3, 0],
+    stare: 1,
+  },
+  // In command of something it is running: it follows the cursor, but stiffly and slower,
+  // the trunk held firm and the idle sway nearly gone (sway, trunk); a short, regular breath.
+  // The work itself is the engine in the chest and the red discs (see tool and disc).
+  tooling: {
+    look: 0.8,
+    life: 1.05,
+    rate: 1.25,
+    loose: 0.9,
+    dim: 0.6,
+    wave: [7, 0.8],
+    level: () => 0.06,
+    follow: 0.5,
+    sway: 0.2,
+    trunk: 0.4,
+    breath: [(2 * Math.PI) / 2.5, 1.2, 0],
+  },
   speaking: {
     look: 0.55,
     life: 1,
@@ -1366,11 +1509,14 @@ function eyeGain(s, clock, level, since, breath) {
       // Coming up; the flash, and how fast, is the mind's answer (eyes.boost, eyes.gain).
       return Math.min(1, 0.12 + since / 0.35)
     case 'listening':
-      return 1.35
+      // Steady, catching each syllable of the voice it hears.
+      return 1.35 + 0.3 * listen.level + 0.35 * Math.exp(-(clock - listen.onsetAt) / 0.12)
     case 'thinking':
-      return 0.75 + 0.3 * Math.sin(clock * 6.3) * Math.sin(clock * 2.1)
+      // Low and steady, calculating; now and then a short, uneven stutter (see think).
+      return clock < think.glitchUntil ? 0.7 + 0.4 * Math.sign(Math.sin(clock * 75)) : 0.7
     case 'tooling':
-      return 1 + 0.15 * Math.sin(clock * 5)
+      // Firm, catching each beat of the engine.
+      return 1.1 + 0.3 * Math.exp(-(clock - tool.beatAt) / 0.08)
     case 'speaking':
       return 1 + level * 0.9
     default:
@@ -1393,8 +1539,24 @@ let artHeat = 0 // how hard the arteries work, 0 at rest .. 1 at high intensity
 let artPhase = 0 // px their pulses have travelled
 let breathPhase = 0 // rad; each turn is one breath, breathing in while its sine is positive
 let beatAt = -1e9 // real time the last heartbeat left the ports
+// Listening: how far it is given to listening (eased), the voice it hears now, the voice's
+// pulses on their way down the outer arteries ({ at, strength, speed, last }), the one the
+// present syllable is still feeding, the sources' flare as they arrive, when the last
+// syllable began (the eyes catch it), and how hard the dust round the body is stirred.
+const listen = { on: 0, level: 0, pulses: [], syllable: null, flare: 0, onsetAt: -1e9, stir: 0 }
+// Thinking: how far it is given to it (eased), px its pulses have run up the outer arteries,
+// how much light has gathered at the crown (builds over ~2 s), the point it stares at (-1..1,
+// drawn on entering), and the eyes' next stutter and the end of the present one.
+const think = { on: 0, phase: 0, build: 0, stare: { x: 0.3, y: -0.25 }, glitchAt: 0, glitchUntil: 0 }
+// Tooling: how far it is given to it (eased), px the engine's pulses have run up the left
+// arteries (the right run 280 behind) and how fast (px/s), when the last beat came (the eyes
+// catch it) and the last from each side (its chest disc pumps), and how the work ended
+// ({ ok, at }, null while it runs) with px run since.
+const tool = { on: 0, phase: 0, speed: 700, beatAt: -1e9, beatL: -1e9, beatR: -1e9, result: null, cut: 0 }
+// The shoulder discs' turbines: how fast they spin (rad/s) and how far they have turned.
+const disc = { speed: 0, angle: 0 }
 const look = { yaw: 0, pitch: 0, body: 0, bodyPitch: 0, attn: 0 } // where the head and the trunk are turned, and how much it attends to the cursor
-const ease = { life: 0, rate: 0.5, loose: 1, dim: 0, waveRate: 1.2, waveDepth: 0.3, look: 0, follow: 1, nod: 0, breathW: 0.4, breathAmp: 1.6, breathGlow: 0, beat: 0 }
+const ease = { life: 0, rate: 0.5, loose: 1, dim: 0, waveRate: 1.2, waveDepth: 0.3, look: 0, follow: 1, nod: 0, breathW: 0.4, breathAmp: 1.6, breathGlow: 0, beat: 0, stare: 0, sway: 1, trunk: 1 }
 
 let keepPlan = false
 function setState(s, auto = false) {
@@ -1430,6 +1592,12 @@ function setState(s, auto = false) {
     $('boot').innerHTML = ''
     $('boot').classList.remove('gone')
   }
+  if (s === 'listening' && state !== 'listening') hearing.resetSim()
+  // Set to work (again, if it already was): the engine starts.
+  if (s === 'tooling') Object.assign(tool, { result: null, cut: 0, speed: 700 })
+  // Each time it thinks it stares at a fresh point, off to one side and up.
+  if (s === 'thinking' && state !== 'thinking')
+    think.stare = { x: (Math.random() < 0.5 ? -1 : 1) * (0.25 + Math.random() * 0.15), y: -(0.2 + Math.random() * 0.1) }
   state = s
   stateAt = now
   mind.setContext(s)
@@ -1500,7 +1668,36 @@ window.addEventListener('keydown', (e) => {
   if (k === 'f') runFlow()
   if (k === 'p') togglePalette()
   if (k === 'c') call()
+  if (k === 'm') toggleMic()
+  // A tool's outcome, as the app would report it: T done (pleased), Y failed (angry).
+  if (k === 't') finishTask(true)
+  if (k === 'y') finishTask(false)
 })
+/**
+ * The tool has finished. The mind takes it its own way (pleased, or angry), and while it is
+ * working the engine stops: done, with one last surge up all four arteries (900 px/s); failed,
+ * stalling (see tool in the frame loop). 5 sets it working again.
+ */
+function finishTask(ok) {
+  mind.stimulate(ok ? 'taskDone' : 'taskFailed')
+  if (state !== 'tooling' || tool.result) return
+  const now = performance.now() / 1000
+  tool.result = { ok, at: now }
+  tool.cut = 0
+  if (ok) Object.assign(surge, { at: now, speed: 900, strength: 1.2 })
+}
+// M: listen through the real microphone instead of the made-up voice (the browser asks first).
+$('mic').addEventListener('click', () => toggleMic())
+async function toggleMic() {
+  try {
+    const on = await hearing.toggleMic()
+    $('mic').textContent = on ? 'M mic on' : 'M mic off'
+    $('mic').classList.toggle('on', on)
+  } catch (err) {
+    $('mic').textContent = 'M mic blocked'
+    console.warn('microphone:', err)
+  }
+}
 // Offline is waiting for a click (the app needs one to unlock audio).
 canvas.addEventListener('click', () => {
   if (state === 'offline') setState('boot')
@@ -1571,6 +1768,9 @@ window.__ultron = {
   mind,
   dream: () => mind.force('dream'),
   call: () => call(),
+  // Dev: what it hears and what listening is doing with it.
+  hearing,
+  listen,
   // Dev: what the cursor interactions are doing right now.
   info: () => ({ click: { ...click }, look: { ...look }, clickU: clickU.value.toArray(), easeLook: ease.look, state }),
 }
@@ -1685,6 +1885,9 @@ function frame(nowMs) {
   ease.breathAmp += ((cfg.breath?.[1] ?? 1.6) - ease.breathAmp) * k(1.5)
   ease.breathGlow += ((cfg.breath?.[2] ?? 0) - ease.breathGlow) * k(1.5)
   ease.beat += ((cfg.beat ?? 0) - ease.beat) * k(2)
+  ease.stare += ((cfg.stare ?? 0) - ease.stare) * k(2.5)
+  ease.sway += ((cfg.sway ?? 1) - ease.sway) * k(2)
+  ease.trunk += ((cfg.trunk ?? 1) - ease.trunk) * k(2)
   levelNow += (cfg.level(clock) - levelNow) * k(10)
 
   // The mind (../mind): its mood and what it does on its own, as channels laid over the
@@ -1722,6 +1925,59 @@ function frame(nowMs) {
   artHeat += (heatWant - artHeat) * k(4)
   artPhase += dt * ease.rate * shimmer * (120 + 180 * artHeat)
 
+  // Listening: what it hears (the microphone, or the made-up voice while that is off). Each
+  // syllable sends a pulse from the ears down the outer arteries, as strong as it was (in
+  // 1.25 s to the chest), and tells the mind someone is speaking (silence makes it
+  // impatient). The end of a phrase sends a last, stronger one (in 0.8 s), and the sources
+  // flare as it arrives: where the app would move on to thinking.
+  const listening = state === 'listening'
+  const heard = hearing.update(dt, clock, listening)
+  listen.on += ((listening ? 1 : 0) - listen.on) * k(3)
+  listen.level = listening ? heard.level : 0
+  if (listening && heard.onset) {
+    listen.onsetAt = clock
+    listen.pulses.push((listen.syllable = { at: clock, strength: 0, speed: earS / 1.25 }))
+    mind.stimulate('voice')
+  }
+  // The pulse grows with its syllable until the syllable is over.
+  if (heard.syllable == null) listen.syllable = null
+  else if (listen.syllable) listen.syllable.strength = 0.2 + 1.1 * heard.syllable
+  if (listening && heard.phraseEnd) listen.pulses.push({ at: clock, strength: 1.3, speed: earS / 0.8, last: true })
+  if (listen.pulses.length > 8) listen.pulses.splice(0, listen.pulses.length - 8)
+  listen.flare *= Math.exp(-dt / 0.35)
+  const inFront = (p) => earS + 20 - (clock - p.at) * p.speed
+  for (const p of listen.pulses)
+    if (!p.arrived && inFront(p) < 0) {
+      p.arrived = true
+      listen.flare += p.last ? 1 : 0.12 * p.strength
+    }
+  listen.pulses = listen.pulses.filter((p) => inFront(p) > -60)
+  for (let i = 0; i < 8; i++) {
+    const p = listen.pulses[i]
+    artInU.value[i].set(p ? inFront(p) : -9999, p ? p.strength * listen.on : 0)
+  }
+  artHearU.value.set(listen.on, listen.level, Math.min(1.5, listen.flare))
+  // Thinking: the thought goes up. Pulses leave the sources 170 px apart and run up the outer
+  // arteries to the crown at 480 px/s, quicker the hotter it runs (an irritated mind thinks
+  // hot), and light gathers at the top of the skull over ~2 s, swelling as each arrives.
+  // The eyes stutter now and then: for 0.08-0.2 s, every 0.6-2.4 s.
+  const thinking = state === 'thinking'
+  think.on += ((thinking ? 1 : 0) - think.on) * k(3)
+  think.build += ((thinking ? 1 : 0) - think.build) * k(thinking ? 0.5 : 3)
+  think.phase = (think.phase + dt * 480 * (1 + 1.2 * ch('arteries.heat'))) % (170 * 400)
+  const arrive = Math.pow(0.5 + 0.5 * Math.cos((2 * Math.PI * (outerLen - think.phase)) / 170), 4)
+  const crown = think.on * think.build * (0.35 + 0.4 * arrive)
+  artThinkU.value.set(think.on, think.phase, 0)
+  if (clock >= think.glitchAt) {
+    think.glitchUntil = clock + 0.08 + Math.random() * 0.12
+    think.glitchAt = clock + 0.6 + Math.random() * 1.8
+  }
+
+  // The dust round the body stirs in step with the arteries: with the voice as it comes in,
+  // and harder as the words arrive at the sources (their flare). It settles in ~0.4 s.
+  const stirWant = Math.min(1.2, (1.1 * listen.level + 0.8 * Math.min(1, listen.flare)) * listen.on)
+  listen.stir += (stirWant - listen.stir) * k(stirWant > listen.stir ? 14 : 2.5)
+
   // Where the head looks: the cursor, as -1..1 across the window, is the target, and the
   // head eases toward it (1 - e^(-4.2 dt)). Off the window it looks straight ahead.
   const lookX = mouse.seen ? Math.max(-1, Math.min(1, (mouse.tx / vw) * 2 - 1)) : 0
@@ -1734,7 +1990,7 @@ function frame(nowMs) {
   // slow waves that never quite repeat. They run on the figure's own clock (slower when
   // dormant) and are scaled by how awake it is, so a sleeping figure only breathes. An
   // impatient mood makes them wander further (head.restless).
-  const restless = ch('head.restless')
+  const restless = ch('head.restless') * ease.sway
   const idleYaw = (0.05 * Math.sin(figClock * 0.43) + 0.03 * Math.sin(figClock * 1.07 + 1.3)) * restless
   const idlePitch = 0.022 * Math.sin(figClock * 0.37 + 0.6) * restless
   const idleBody = (0.032 * Math.sin(figClock * 0.31 + 2.0) + 0.018 * Math.sin(figClock * 0.83)) * restless
@@ -1743,28 +1999,76 @@ function frame(nowMs) {
   // room) takes over from the cursor by its weight, at full reach whatever the state.
   const gw = mo.gaze.weight
   const aim = (own, full) => own + (full - own) * gw
-  look.yaw += (aim((lookX * 0.44 + idleYaw) * ease.look, mo.gaze.x * 0.44) - look.yaw) * lk
-  look.pitch += (aim((lookY * 0.2 + idlePitch) * ease.look, mo.gaze.y * 0.2) + ease.nod + ch('head.pitch') - look.pitch) * lk
+  // Thinking it stares at a point of its own instead (the trunk turning half as far).
+  const stareX = think.stare.x * ease.stare
+  const stareY = think.stare.y * ease.stare
+  look.yaw += (aim((lookX * 0.44 + idleYaw) * ease.look + stareX * 0.44, mo.gaze.x * 0.44) - look.yaw) * lk
+  look.pitch += (aim((lookY * 0.2 + idlePitch) * ease.look + stareY * 0.2, mo.gaze.y * 0.2) + ease.nod + ch('head.pitch') - look.pitch) * lk
   // The trunk turns less than the head (up to 0.14 rad, ~8 degrees) and follows later and
   // softer (about 0.55 s behind), as a body does.
   const bk = 1 - Math.exp(-dt * 1.8 * follow)
-  look.body += (aim((lookX * 0.14 + idleBody) * ease.look, mo.gaze.x * 0.14) - look.body) * bk
-  look.bodyPitch += (aim((lookY * 0.05 + idleBodyPitch) * ease.look, mo.gaze.y * 0.05) - look.bodyPitch) * bk
+  // (Held firm, ease.trunk, while it works.)
+  look.body += (aim(((lookX * 0.14 + idleBody) * ease.look + stareX * 0.07) * ease.trunk, mo.gaze.x * 0.14) - look.body) * bk
+  look.bodyPitch += (aim(((lookY * 0.05 + idleBodyPitch) * ease.look + stareY * 0.025) * ease.trunk, mo.gaze.y * 0.05) - look.bodyPitch) * bk
   // Dev: window.__ultron.pose = { yaw, pitch, body, bodyPitch } holds the head and trunk there.
   if (dev && dev.pose) Object.assign(look, dev.pose)
   look.attn += ((mouse.seen ? Math.min(1, ease.look) : 0) - look.attn) * k(6)
   attnU.value.set(mx, my)
 
-  // A band of light over the figure: tooling keeps sending weak ones up it, like work
-  // being fed upward. (Waking no longer has one: the answer surges up the arteries.)
-  let pulseY = -9999
-  let pulseA = 0
-  let pulseW = 60
-  if (state === 'tooling') {
-    pulseY = H + 60 - (H - 40) * ((since * 0.75) % 1)
-    pulseA = 0.9
-    pulseW = 46
+  // Tooling: a machine at work. The chest beats like an engine, 2.5 times a second, each beat
+  // sending a pulse up all four arteries on one side, left and right in turn like pistons
+  // (700 px/s, so each side's pulses run 560 px apart), the eyes catching every beat. The
+  // red discs do the work (see disc below).
+  //
+  // When the work ends (finishTask) no more pulses leave. Done: the ones on their way finish
+  // their run and one last surge goes up all four at once, then the arteries rest. Failed:
+  // the engine stalls, its pulses slowing to a halt where they are (~0.5 s), flickering, and
+  // gone by 1.2 s.
+  const tooling = state === 'tooling'
+  const res = tool.result
+  const stalled = res && !res.ok
+  const over = res && (res.ok ? tool.cut > outerLen + 40 : clock - res.at > 1.2)
+  tool.on += ((tooling && !over ? 1 : 0) - tool.on) * k(4)
+  tool.speed += ((stalled ? 0 : 700) - tool.speed) * k(stalled ? 5 : 20)
+  const ran = dt * tool.speed
+  const beatNo = Math.floor(tool.phase / 280)
+  tool.phase = (tool.phase + ran) % (560 * 100)
+  const beatNow = Math.floor(tool.phase / 280)
+  if (res) tool.cut += ran
+  else if (tooling && beatNow !== beatNo) {
+    // Even beats leave from the left, odd from the right (the phase wraps after 200 beats).
+    tool.beatAt = clock
+    if (beatNow % 2 === 0) tool.beatL = clock
+    else tool.beatR = clock
   }
+  const sinceEnd = res ? clock - res.at : 0
+  const toolGain = !stalled ? 1 : sinceEnd < 0.7 ? 0.55 + 0.45 * Math.sign(Math.sin(sinceEnd * 38)) : Math.max(0, 1 - (sinceEnd - 0.7) / 0.5)
+  artToolU.value.set(tool.on, tool.phase, res ? tool.cut : -1, toolGain)
+
+  // The discs. The shoulders' are turbines: working, their blades of light spin up to 1.6
+  // turns a second over ~2 s (the left one way, the right the other), showing more and the
+  // disc glowing more the faster they go. Done, they spin down in ~1.5 s, fading as they
+  // slow; failed, they jam at once with a jolt back and stay there, frozen, ~0.5 s before
+  // fading. The chest's are pistons: each draws in and lights up as its side's beat leaves
+  // it. At the end all four flare together (done), or flicker and go dark for a moment (failed).
+  const TOP = 2 * Math.PI * 1.6
+  if (stalled) disc.speed = 0
+  else disc.speed += ((tooling && !res ? TOP : 0) - disc.speed) * k(res ? 1.4 : 0.9)
+  disc.angle = (disc.angle + dt * disc.speed) % (2 * Math.PI * 1000)
+  const jolt = stalled ? -0.2 * (1 - Math.exp(-sinceEnd / 0.04)) * Math.exp(-sinceEnd / 0.5) : 0
+  const pump = (at) => (clock - at < 0.6 ? Math.exp(-(clock - at) / 0.12) : 0)
+  let endLight = 0
+  if (res && res.ok) endLight = 1.5 * Math.exp(-sinceEnd / 0.35)
+  else if (stalled && sinceEnd < 0.5) endLight = Math.sin(sinceEnd * 45) < 0 ? -0.9 : 0.5
+  else if (stalled && sinceEnd < 1.3) endLight = -0.85 * Math.min(1, (1.3 - sinceEnd) / 0.4)
+  const spinLight = 0.8 * (disc.speed / TOP) * (0.85 + 0.15 * Math.sin(clock * 9))
+  const blades = stalled ? Math.max(0, Math.min(1, 1 - (sinceEnd - 0.5) / 0.8)) : disc.speed / TOP
+  discsU.value[2].w = disc.angle + jolt
+  discsU.value[3].w = -(disc.angle + jolt)
+  discFxU.value[0].set(1.4 * pump(tool.beatL) + endLight, pump(tool.beatL), 0)
+  discFxU.value[1].set(1.4 * pump(tool.beatR) + endLight, pump(tool.beatR), 0)
+  discFxU.value[2].set(spinLight + endLight, 0, blades)
+  discFxU.value[3].set(spinLight + endLight, 0, blades)
 
   // The mind's gestures. The surge's front runs up the arteries and fades past the crown
   // (~700-950 px along them). The region crumbling or being rebuilt is whichever channel
@@ -1812,16 +2116,16 @@ function frame(nowMs) {
     u.uCrumble.value = crumbleAmt
     if (rebuildAt) u.uRebuildAt.value.set(...rebuildAt)
     u.uRebuild.value.set(rebuildAmt, rebuild.lift, rebuild.turn)
+    u.uSpins.value = l.kind === 'veins' || l.kind === 'redlight' || l.kind === 'artery' ? 1 : 0
     u.uDim.value = ease.dim * (meta.dimScale ?? 1)
     u.uRed.value = l.kind === 'figure' || back ? redNow : 0
     u.uLife.value = back ? 0.5 + 0.5 * lifeNow : lifeNow
     u.uLoose.value = ease.loose
     u.uWaveRate.value = ease.waveRate
     u.uWaveDepth.value = ease.waveDepth
-    u.uPulse.value = back ? -9999 : pulseY
-    u.uPulseW.value = pulseW
-    u.uPulseA.value = pulseA
     if (back) u.uParallax.value = mouse.seen ? -((mouse.x - vw / 2) / vw) * 26 : 0
+    u.uStir.value = back || l.stirs ? listen.stir : 0
+    u.uCrown.value = back ? 0 : crown
   }
 
   $('wake').style.opacity = state === 'offline' ? 0.55 + 0.35 * Math.sin(clock * 2.2) : 0
@@ -1831,7 +2135,8 @@ function frame(nowMs) {
   // them stutter (eyes.flicker).
   const flicker = ch('eyes.flicker') * (0.5 + 0.5 * Math.sin(clock * 47) * Math.sin(clock * 13.3))
   const eg = (eyeGain(state, clock, levelNow, since, breathNow) * ch('eyes.gain') + ch('eyes.boost')) * (1 - 0.85 * flicker)
-  lightsLayer.uniforms.uFade.value += (eg - lightsLayer.uniforms.uFade.value) * k(state === 'waking' ? 14 : 8)
+  // (Quick while listening, thinking and tooling, so a blink, a syllable, a stutter or a beat reads.)
+  lightsLayer.uniforms.uFade.value += (eg - lightsLayer.uniforms.uFade.value) * k(state === 'waking' ? 14 : state === 'listening' || state === 'thinking' || state === 'tooling' ? 16 : 8)
 
   // Face layers: one is up at a time, except that the voice-print crossfades fast.
   const want = {}
