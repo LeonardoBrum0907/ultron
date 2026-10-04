@@ -326,7 +326,7 @@ export function Hud() {
 
       <footer className="hud-bottom">
         <span className="hint">
-          say <b>“hey ultron”</b> · <kbd>Space</kbd> to talk · <kbd>G</kbd> hands
+          say <b>“hey ultron”</b> · <kbd>Space</kbd> to talk · <kbd>G</kbd> hands · <kbd>L</kbd> log
           {voice && (
             <>
               {' · '}

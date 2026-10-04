@@ -8,6 +8,7 @@ import {
 } from '../config'
 import * as kokoro from './kokoro'
 import { caps, speaksEnglish } from './capabilities'
+import { addEleven, clip, errorText, log } from './log'
 
 /**
  * Speech output.
@@ -435,13 +436,20 @@ export function createSpeaker(): Speaker {
       // ElevenLabs, which makes the one field naming the engine useless
       // exactly when you are trying to work out which engine is at fault.
       diag.engine = 'elevenlabs'
-      return fetchCloudAudio(text).catch(() => null)
+      return fetchCloudAudio(text)
+        .catch(() => null)
+        .then((url) => {
+          if (!url) log('voice', 'ElevenLabs falhou: usando a voz do sistema', 'warn')
+          return url
+        })
     }
     if (TTS_ENGINE === 'kokoro' && speaksEnglish() && !kokoro.isUnavailable()) {
       diag.engine = 'kokoro'
+      log('voice', `kokoro · ${text.length} caracteres`)
       return kokoro.speak(text).catch(() => null)
     }
     diag.engine = 'system'
+    log('voice', `voz do navegador · "${clip(text, 40)}"`)
     return null
   }
 
@@ -791,14 +799,32 @@ export function createSpeaker(): Speaker {
 async function fetchCloudAudio(text: string): Promise<string | null> {
   if (BACKEND === 'bridge') {
     try {
+      const t0 = performance.now()
       const res = await fetch(`${BRIDGE_HTTP_URL}/tts`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text }),
       })
-      if (res.ok) return URL.createObjectURL(await res.blob())
-    } catch {
-      /* fall through */
+      if (res.ok) {
+        const blob = await res.blob()
+        const chars = Number(res.headers.get('x-ultron-chars') ?? text.length)
+        const credits = Number(res.headers.get('x-ultron-credits') ?? 0)
+        const cached = res.headers.get('x-ultron-cache') === 'hit'
+        addEleven(chars, credits, cached)
+        log(
+          'eleven',
+          `fala ${chars} caracteres · ${cached ? 'cache, 0 cr' : `${credits} cr`} · ` +
+            `${((performance.now() - t0) / 1000).toFixed(1)}s`,
+        )
+        return URL.createObjectURL(blob)
+      }
+      log(
+        'eleven',
+        `fala recusada (${res.status}) ${errorText(await res.text().catch(() => ''))}`,
+        'error',
+      )
+    } catch (err) {
+      log('eleven', `fala sem resposta: ${err instanceof Error ? err.message : err}`, 'error')
     }
   }
 

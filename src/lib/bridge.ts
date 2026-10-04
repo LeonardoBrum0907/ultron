@@ -1,6 +1,7 @@
 import type { AskHandlers } from './anthropic'
 import type { Blade, Panel } from '../store'
 import { BRIDGE_WS_URL } from '../config'
+import { addClaude, clip, compact, log } from './log'
 
 /**
  * Client for the local bridge (see bridge/server.mjs).
@@ -20,6 +21,10 @@ import { BRIDGE_WS_URL } from '../config'
  *  bridge build should be ignored, not crash the turn. */
 type Frame = {
   type?: string
+  /** done and error: what the turn cost, and what it used. */
+  costUsd?: number | null
+  usage?: { in: number; out: number; cacheRead: number; cacheWrite: number } | null
+  durationMs?: number | null
   delta?: string
   name?: string
   /** tool_result: whether the tool worked. */
@@ -178,6 +183,7 @@ function dispatch(ws: WebSocket) {
         .map((s) => (typeof s === 'string' ? s : (s.name ?? '')))
         .filter(Boolean)
       onServers?.(servers)
+      log('bridge', `pronto · ${servers.length} servidores MCP`)
       firstReady.resolve()
     } else if (msg.type === 'panel' && msg.panel) {
       onPanel?.(msg.panel)
@@ -248,6 +254,7 @@ function connect(): Promise<WebSocket> {
       attempt = 0
       dispatch(ws)
       settle(null)
+      log('bridge', everConnected ? 'reconectado' : 'conectado')
       onConnection?.(everConnected ? 'reconnected' : 'open')
       everConnected = true
     }
@@ -280,6 +287,7 @@ function connect(): Promise<WebSocket> {
       settle(new Error('The bridge closed the connection.'))
       if (socket === ws) {
         socket = null
+        log('bridge', 'conexão perdida', 'warn')
         onConnection?.('lost')
         scheduleReconnect()
       }
@@ -439,19 +447,38 @@ export async function ask(
           case 'tool':
             if (!msg.name) break
             tools.push(msg.name)
+            log('claude', `ferramenta ${prettyToolName(msg.name)}`)
             handlers.onTool(prettyToolName(msg.name))
             break
 
           case 'tool_result':
             if (!msg.name) break
+            if (msg.ok === false) {
+              log('claude', `ferramenta FALHOU ${prettyToolName(msg.name)}`, 'error')
+            }
             handlers.onToolResult?.(prettyToolName(msg.name), msg.ok !== false)
             break
 
-          case 'done':
+          case 'done': {
+            const u = msg.usage
+            addClaude(msg.costUsd, u?.in, u?.out)
+            log(
+              'claude',
+              [
+                `turno $${(msg.costUsd ?? 0).toFixed(4)}`,
+                u && `${compact(u.in)} in / ${compact(u.out)} out`,
+                u && u.cacheRead > 0 && `cache ${compact(u.cacheRead)}`,
+                msg.durationMs != null && `${(msg.durationMs / 1000).toFixed(1)}s`,
+              ]
+                .filter(Boolean)
+                .join(' · '),
+            )
             finish(msg.text ?? '')
             break
+          }
 
           case 'error':
+            log('claude', `erro ${msg.reason ?? ''} ${msg.message ?? ''}`.trim(), 'error')
             fail(new Error(msg.message ?? 'The bridge reported an error.'))
             break
         }
@@ -474,6 +501,7 @@ export async function ask(
     arm()
 
     try {
+      log('claude', `pergunta "${clip(prompt)}"`)
       ws.send(JSON.stringify({ type: 'ask', text: prompt, id }))
     } catch (err) {
       // The socket can go into CLOSING between connect() resolving and here.

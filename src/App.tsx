@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { Figure } from './ui/Figure'
 import { TextBox } from './ui/TextBox'
+import { LogPanel } from './ui/LogPanel'
+import { clip, log } from './lib/log'
 import { Hud } from './ui/Hud'
 import { Diagnostics } from './ui/Diagnostics'
 import { useStore } from './store'
@@ -267,6 +269,7 @@ export default function App() {
     if (phase === 'offline' || phase === 'boot') return
 
     store.getState().setError(null)
+    log('voice', trailing ? `chamado: "${clip(trailing)}"` : 'chamado')
     sfx.play('wake')
     // He always answers, in his own mood's way. The microphone does not wait for
     // the answer's style: it opens now, whatever the face is still doing.
@@ -335,6 +338,7 @@ export default function App() {
       listen(AWAIT_SPEECH_MS)
       return
     }
+    log('voice', `ouvido "${clip(said)}"`)
 
     void respond(said)
   }
@@ -349,6 +353,7 @@ export default function App() {
     if (phase === 'offline' || phase === 'boot') return
     const said = text.replace(LEADING_NAME, '').trim()
     if (!said) return
+    log('voice', `digitado "${clip(said)}"`)
     store.getState().setError(null)
     if (phase === 'dormant') mind.stimulate('call')
     if (isForbidden(said)) mind.stimulate('forbiddenName')
@@ -361,6 +366,7 @@ export default function App() {
   }
 
   const onVoiceError = (message: string) => {
+    log('voice', message, 'error')
     store.getState().setError(message)
   }
 
@@ -760,6 +766,7 @@ export default function App() {
       <Hud />
       <TextBox onSend={onTyped} onMute={(off) => off && speaker.current?.cancel()} />
       <Diagnostics />
+      <LogPanel />
     </>
   )
 }

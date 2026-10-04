@@ -1,4 +1,5 @@
 import { BACKEND, BRIDGE_HTTP_URL, env } from '../config'
+import { log } from './log'
 
 /**
  * What speech engines are actually available, decided once at boot.
@@ -63,10 +64,16 @@ export async function probeCapabilities(): Promise<Capabilities> {
     if (res.ok) {
       const h = (await res.json()) as { stt?: boolean; tts?: boolean; lang?: string }
       current = { stt: Boolean(h.stt), tts: Boolean(h.tts), lang: h.lang || DEFAULT_LANG }
+      log(
+        'bridge',
+        `saúde · voz ${current.tts ? 'ElevenLabs' : 'navegador'} · ` +
+          `ouvido ${current.stt ? 'Scribe' : 'navegador'} · ${current.lang}`,
+      )
     }
   } catch {
     // Bridge down or slow — stay on the browser engines rather than blocking
     // boot on a health check that is only an optimisation.
+    log('bridge', 'saúde sem resposta: voz e ouvido do navegador', 'warn')
   }
   probed = true
   return current
