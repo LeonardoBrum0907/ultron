@@ -369,18 +369,20 @@ const vert = /* glsl */ `
     // quick course of its own, a little brighter (see listen.stir).
     p += vec2(sin(uFreeTime * (6.0 + aSeed * 9.0) + ph * 7.0), cos(uFreeTime * (5.0 + aSeed * 8.0) + ph * 11.0)) * (2.0 + aJit) * uStir * e;
     // Speaking, it pushes the dust instead: each stressed syllable sends a light wave out from
-    // its mouth, in a ring all round the figure, and the motes it passes are shoved a few px
-    // outward, a little brighter. uPushAt is the mouth in this layer's own px (the backdrop has
+    // its mouth, in a ring all round the figure that crosses the whole window, and the motes it
+    // passes are shoved outward (up to ~9 px near the mouth, less and less as the wave spends
+    // itself, see speak.waves) and brightened. uPushAt is the mouth in this layer's own px (the backdrop has
     // its own image and scale) and how many of the figure's px one of them is.
     float pushed = 0.0;
     if (uPushOn > 0.5) {
       vec2 fromM = p - uPushAt.xy;
       float dm = length(fromM) * uPushAt.z;
       for (int i = 0; i < 4; i++) {
-        float wz = (dm - uPush[i].x) / 45.0;
+        // The front widens as it travels: 40 px across at the mouth, ~110 at the far edge.
+        float wz = (dm - uPush[i].x) / (40.0 + 0.07 * uPush[i].x);
         pushed += uPush[i].y * exp(-wz * wz);
       }
-      p += normalize(fromM + vec2(0.0, 0.001)) * (5.0 + 0.5 * aJit) / uPushAt.z * pushed * e;
+      p += normalize(fromM + vec2(0.0, 0.001)) * (9.0 + 0.8 * aJit) / uPushAt.z * pushed * e;
     }
     // The whole figure breathes.
     p.y -= uBreath * e;
@@ -861,6 +863,7 @@ const curSrc = [] // where each gathers
 const curDst = [] // where each delivers
 let routes = [] // how each current travels this boot
 let reachNow = 2000 // how far a current can carry a particle: past any edge of the window
+let waveReach = 900 // figure px from the mouth to the window's farthest corner (speaking's dust waves)
 let yEdges = [] // boundaries between the parts, bottom to top (image y)
 let figX0 = 0 // where the figure starts and ends across the image
 let figX1 = 1
@@ -1653,6 +1656,8 @@ function layout() {
   setGuides()
   // The mouth, where speaking's waves through the dust start (see uPushAt).
   const mouthAt = [CX, MOUTH?.seam ?? FACE.cy]
+  const mouthDown = (H - mouthAt[1]) * scale // CSS px from the mouth down to the window's bottom
+  waveReach = Math.hypot(vw / 2, Math.max(mouthDown, vh - mouthDown)) / scale
   for (const l of layers) {
     const u = l.uniforms
     u.uView.value.set(vw, vh)
@@ -2451,7 +2456,7 @@ function frame(nowMs) {
   // eye, lighting it as it gets there (any pulse does at the extremes). The end of a phrase
   // sends a last, stronger one (1.3x as fast), and the cheeks flare fully as it comes out. A
   // stressed syllable (past the tone's stress, at most one in 0.35 s) nods the head and sends a
-  // wave out from the mouth through the dust all round the figure (420 px/s, fading in ~0.7 s).
+  // wave out from the mouth through the dust across the whole window, losing strength as it goes.
   speak.on += ((speaking ? 1 : 0) - speak.on) * k(3)
   if (speaking && spoken.wordOnset) speak.pulses.push((speak.word = { at: clock, strength: 0, speed: tone.speed, reach: 0 }))
   if (spoken.word == null) speak.word = null
@@ -2485,10 +2490,16 @@ function frame(nowMs) {
     artOutU.value[i].set(p ? sent(p) : -9999, p ? p.strength : 0, p ? p.reach : 0, tone.width)
   }
   artSpeakU.value.set(speak.on, speaking ? speech.level : 0, Math.min(1.2, speak.flare), cheekS)
-  speak.waves = speak.waves.filter((w) => clock - w.at < 1.8)
+  // The waves cross the whole window (to its farthest corner, waveReach) at 650 px/s, strongest
+  // as they leave the mouth and weaker the further they get: 1 at the mouth, ~0.45 halfway,
+  // 0.15 at the far edge, gone just past it.
+  const waveR = (w) => (clock - w.at) * 650
+  speak.waves = speak.waves.filter((w) => waveR(w) < waveReach + 120)
   for (let i = 0; i < 4; i++) {
     const w = speak.waves[speak.waves.length - 1 - i]
-    pushU.value[i].set(w ? (clock - w.at) * 420 : -9999, w ? w.strength * Math.exp(-(clock - w.at) / 0.7) * speak.on : 0)
+    const f = w ? Math.min(1, waveR(w) / waveReach) : 0
+    const fade = w ? 1 - Math.max(0, Math.min(1, (waveR(w) - waveReach) / 120)) : 0
+    pushU.value[i].set(w ? waveR(w) : -9999, w ? w.strength * (0.15 + 0.85 * Math.pow(1 - f, 1.6)) * fade * speak.on : 0)
   }
   // The nod: the head dips by the tone's nod in 0.07 s and comes back up in ~0.2 s.
   const sinceStress = clock - speak.stressAt
