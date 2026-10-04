@@ -149,6 +149,48 @@ function setup(seed = 1, context = 'dormant') {
   check('offline: no answer (the host boots it instead)', !off.log.some((e) => e.type === 'answer'))
 }
 
+// Listening in silence: "well?" at 6 s, scorn at 16 s, irritation creeping up after 6 s.
+// Speaking starts the count again; the same silence in dormant does nothing.
+{
+  const { mind, run, starts } = setup(4, 'listening')
+  const at = (name: string) => (starts(name)[0] as { t: number } | undefined)?.t ?? NaN
+  run(5)
+  const before = mind.output().mood.irritation
+  run(13)
+  const after = mind.output().mood.irritation
+  check('silence: impatient at 6 s', Math.abs(at('impatient') - 6) < 0.1, `at ${at('impatient').toFixed(2)} s`)
+  check('silence: scorn at 16 s', Math.abs(at('scorn') - 16) < 0.1, `at ${at('scorn').toFixed(2)} s`)
+  check('silence: irritation creeps up', after > before + 0.1, `${before.toFixed(2)} -> ${after.toFixed(2)}`)
+  check('silence: each once per quiet stretch', starts('impatient').length === 1 && starts('scorn').length === 1)
+
+  const s = setup(4, 'listening')
+  s.run(4)
+  s.mind.stimulate('voice')
+  s.run(8)
+  const t0 = (s.starts('impatient')[0] as { t: number } | undefined)?.t ?? NaN
+  check('speaking restarts the count', Math.abs(t0 - 10) < 0.1, `at ${t0.toFixed(2)} s`)
+
+  const d = setup(4, 'dormant')
+  d.run(20)
+  check('not in dormant', d.starts('impatient').length === 0 && d.starts('scorn').length === 0)
+}
+
+// A task's outcome: done pleases it (vanity up), failed angers it (irritation up).
+{
+  const { mind, run, starts } = setup(6, 'tooling')
+  run(1)
+  const v0 = mind.output().mood.vanity
+  mind.stimulate('taskDone')
+  run(0.5)
+  check('task done: pleased plays, vanity up', starts('pleased').length === 1 && mind.output().mood.vanity > v0, `vanity ${v0.toFixed(2)} -> ${mind.output().mood.vanity.toFixed(2)}`)
+  run(3)
+  const i0 = mind.output().mood.irritation
+  mind.stimulate('taskFailed')
+  run(0.5)
+  const o = mind.output()
+  check('task failed: failed plays, irritation up, a part crumbles', starts('failed').length === 1 && o.mood.irritation > i0 + 0.1 && Object.keys(o.channels).some((c) => c.startsWith('crumble:') && o.channels[c] > 0.2))
+}
+
 // Same seed, same life.
 {
   const a = setup(11)

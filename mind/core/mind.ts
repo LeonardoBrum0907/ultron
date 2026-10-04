@@ -16,6 +16,7 @@ export interface MindOptions {
 }
 
 const THRESHOLD = /^(rise|fall):([\w-]+):([\d.]+)$/
+const QUIET = /^quiet:([\w-]+):([\d.]+)$/
 const HYSTERESIS = 0.05
 
 export function createMind(personality: Personality, options: MindOptions = {}) {
@@ -28,8 +29,11 @@ export function createMind(personality: Personality, options: MindOptions = {}) 
   let t = 0
   let timeScale = 1
   let context = ''
+  let contextAt = 0
   const emo: Record<string, EmotionState> = {}
   const lastStim: Record<string, number> = {}
+  // The quiet stretch each 'quiet:' trigger last fired for (by when it began).
+  const quietFired = new Map<string, number>()
   let lastInteraction = 0
   let wasIdle = false
   let focus: Focus = { x: 0, y: 0, present: false }
@@ -42,6 +46,8 @@ export function createMind(personality: Personality, options: MindOptions = {}) 
   const ctx = (): ContextConfig => config.contexts[context] ?? { freedom: 0, expression: 1 }
   const paused = () => !!ctx().paused
   const emit = (e: MindEvent) => listeners.forEach((fn) => fn(e))
+  /** When the present quiet stretch of a stimulus began: its last arrival, or the context's start. */
+  const quietSince = (stimulus: string) => Math.max(lastStim[stimulus] ?? -Infinity, contextAt)
 
   function syncEmotions() {
     for (const [name, c] of Object.entries(config.emotions)) emo[name] ??= { value: c.rest, mood: 0 }
@@ -80,6 +86,7 @@ export function createMind(personality: Personality, options: MindOptions = {}) 
     config: () => config,
     rng,
     now: () => t,
+    context: () => context,
     freedom: () => (paused() ? 0 : (ctx().freedom ?? 0)),
     paused,
     visible: vis,
@@ -102,6 +109,7 @@ export function createMind(personality: Personality, options: MindOptions = {}) 
         if (d.contexts && !d.contexts.includes(inContext)) continue
         if (d.idle && !idle) continue
         if (d.emotion && (v[d.emotion] ?? 0) <= (d.above ?? 0)) continue
+        if (d.quiet && t - quietSince(d.quiet.stimulus) < d.quiet.for) continue
         for (const [e, k] of Object.entries(d.add)) push[e] = (push[e] ?? 0) + k
       }
     for (const [name, c] of Object.entries(config.emotions)) stepEmotion(c, emo[name], dt, push[name] ?? 0)
@@ -137,6 +145,7 @@ export function createMind(personality: Personality, options: MindOptions = {}) 
     setContext(name: string) {
       if (name === context) return
       context = name
+      contextAt = t
       emit({ type: 'context', t, name })
     },
 
@@ -167,6 +176,16 @@ export function createMind(personality: Personality, options: MindOptions = {}) 
           h.armed = false
           stimulate(h.key)
         } else if (!h.armed && back) h.armed = true
+      }
+      // Gone quiet: once per quiet stretch, and only where a reaction may answer it.
+      for (const r of Object.values(config.reactions)) {
+        const m = r.on?.match(QUIET)
+        if (!m || (r.contexts && !r.contexts.includes(context))) continue
+        const since = quietSince(m[1])
+        if (t - since >= Number(m[2]) && quietFired.get(r.on!) !== since) {
+          quietFired.set(r.on!, since)
+          stimulate(r.on!)
+        }
       }
       director.tick()
       if (storage) {

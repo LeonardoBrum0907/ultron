@@ -22,6 +22,8 @@ export const ultron: Personality = {
     { idle: true, contexts: ['dormant'], add: { boredom: 0.005 } },
     // Boredom past its peak turns into irritation.
     { emotion: 'boredom', above: 0.8, add: { irritation: 0.002 } },
+    // Called and then kept waiting in silence: it grows impatient.
+    { quiet: { stimulus: 'voice', for: 6 }, contexts: ['listening'], add: { irritation: 0.025 } },
   ],
 
   stimuli: {
@@ -30,6 +32,8 @@ export const ultron: Personality = {
     pointerCalm: {},
     pointerLeft: {},
     pointerReturned: { interaction: true },
+    // The user speaking (the host sends it on each syllable while it listens).
+    voice: { interaction: true, effects: { boredom: -0.03 }, every: 0.25 },
     call: { interaction: true, effects: { boredom: '*0.3', vanity: 0.05 }, again: { within: 30, effects: { irritation: 0.15 } } },
     forbiddenName: { effects: { irritation: 0.6, vanity: -0.1 } },
     taskDone: { effects: { vanity: 0.08 } },
@@ -186,6 +190,58 @@ export const ultron: Personality = {
         { ch: 'eyes.gain', to: 1.15, attack: 0.5, hold: 0.5, release: 1 },
       ],
       after: { vanity: 0.1 },
+    },
+
+    // Listening and you say nothing: "well?" The chin goes up and the eyes blink twice, dry.
+    impatient: {
+      kind: 'reflex',
+      on: 'quiet:voice:6',
+      contexts: ['listening'],
+      cooldown: 5,
+      does: [
+        { ch: 'head.pitch', to: [-0.06, -0.04], attack: 0.25, hold: [1.2, 1.8], release: 0.8 },
+        { ch: 'eyes.gain', to: 0.1, attack: 0.04, hold: 0.07, release: 0.08 },
+        { ch: 'eyes.gain', to: 0.1, at: 0.32, attack: 0.04, hold: 0.07, release: 0.08 },
+        { ch: 'arteries.heat', to: 0.2, attack: 0.2, hold: 0.8, release: 0.8 },
+      ],
+    },
+
+    // Still nothing: it looks away with a scornful breath, and back at you.
+    scorn: {
+      kind: 'reflex',
+      on: 'quiet:voice:16',
+      contexts: ['listening'],
+      cooldown: 10,
+      does: [
+        { ch: 'gaze', target: 'awayFromFocus', weight: 0.7, attack: 0.5, hold: [1, 1.6], release: 0.9 },
+        { ch: 'body.rise', to: [0.5, 0.7], attack: 0.6, hold: 0.1, release: 1.4 },
+        { ch: 'glow', to: 0.85, at: 0.6, attack: 0.6, hold: 0.3, release: 1 },
+      ],
+      after: { irritation: 0.1 },
+    },
+
+    // A task done: pleased with itself, chin up, a flash in the eyes.
+    pleased: {
+      kind: 'reflex',
+      on: 'taskDone',
+      cooldown: 2,
+      does: [
+        { ch: 'head.pitch', to: [-0.07, -0.05], attack: 0.3, hold: [0.8, 1.2], release: 0.9 },
+        { ch: 'eyes.boost', to: 0.8, attack: 0.08, hold: 0.1, release: 0.5 },
+        { ch: 'glow', to: 1.1, attack: 0.3, hold: 0.4, release: 0.8 },
+      ],
+    },
+
+    // A task failed: the eyes stutter and a part of it crumbles for a moment, hot with anger.
+    failed: {
+      kind: 'reflex',
+      on: 'taskFailed',
+      cooldown: 2,
+      does: [
+        { ch: 'eyes.flicker', to: 0.7, attack: 0.04, hold: 0.4, release: 0.2 },
+        { ch: 'crumble:*', pick: ['shoulderL', 'shoulderR', 'chestL', 'chestR', 'collarL', 'collarR'], to: [0.35, 0.5], at: 0.1, attack: 0.08, hold: 0.3, release: 0.3 },
+        { ch: 'arteries.heat', to: 0.5, attack: 0.1, hold: 0.6, release: 1 },
+      ],
     },
 
     // The eyes stir for a third of a second, as if in a dream.

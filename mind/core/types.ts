@@ -30,6 +30,11 @@ export interface Drive {
   /** Holds while this emotion's visible value is above `above`. */
   emotion?: string
   above?: number
+  /**
+   * Holds once this stimulus has not come for `for` s (the user has gone quiet). The
+   * count starts again whenever it comes and whenever the context changes.
+   */
+  quiet?: { stimulus: string; for: number }
   /** Only in these contexts (all, if left out). */
   contexts?: string[]
   add: Record<string, number>
@@ -103,9 +108,15 @@ export interface Track {
 export interface ReactionConfig {
   /** reflex: answers a stimulus. spontaneous: drawn by the director. */
   kind: 'reflex' | 'spontaneous'
-  /** reflex: the stimulus it answers ('rise:<emotion>:<level>' and 'fall:...' work too). */
+  /**
+   * reflex: the stimulus it answers. Also 'rise:<emotion>:<level>' and 'fall:...' (an
+   * emotion crossing a level), and 'quiet:<stimulus>:<s>' (that stimulus has not come for
+   * s seconds, counted as in Drive.quiet; once for each quiet stretch).
+   */
   on?: string
   enabled?: boolean
+  /** Only in these contexts (all, if left out). Playing, it is cut when the context leaves them. */
+  contexts?: string[]
   /** Base weight in the director's draw. */
   base?: number
   /** It only happens where the context's freedom is at least this. */

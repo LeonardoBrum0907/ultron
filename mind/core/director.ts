@@ -13,6 +13,7 @@ export interface DirectorHost {
   config(): Personality
   rng: Rng
   now(): number
+  context(): string
   freedom(): number
   paused(): boolean
   visible(): Record<string, number>
@@ -84,8 +85,11 @@ export function createDirector(host: DirectorHost) {
     return c
   }
 
+  const inContext = (conf: ReactionConfig) => !conf.contexts || conf.contexts.includes(host.context())
+
   function allowed(conf: ReactionConfig) {
     if (conf.enabled === false) return false
+    if (!inContext(conf)) return false
     if (host.freedom() < (conf.minFreedom ?? 0)) return false
     if (!within(conf.requires)) return false
     const w = conf.when
@@ -295,7 +299,7 @@ export function createDirector(host: DirectorHost) {
         nextAt = now + wait()
         return
       }
-      if (active && host.freedom() < (active.conf.minFreedom ?? 0)) cut(active)
+      if (active && (host.freedom() < (active.conf.minFreedom ?? 0) || !inContext(active.conf))) cut(active)
       if (now >= nextAt) {
         if (!active) draw()
         nextAt = now + wait()
