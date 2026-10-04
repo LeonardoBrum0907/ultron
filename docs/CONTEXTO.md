@@ -95,8 +95,13 @@ As fases do app ficam em `src/store.ts` (`Phase`): `offline`, `boot`, `dormant`,
 
 É uma página independente que desenha o Ultron como uma figura holográfica com mais de
 100 mil partículas. A contagem total aparece no painel de stats; cada rosto de estado é
-uma camada própria, então nem todas ficam visíveis ao mesmo tempo. Ela vai substituir a interface atual, mas **ainda não está integrada
-ao app**.
+uma camada própria, então nem todas ficam visíveis ao mesmo tempo. **Já é o rosto do app**
+(branch `integracao-app`): a figura mora em `proto/figure.js` (`createFigure`), que a
+página do protótipo (`proto/main.js`, com botões, teclas e painel) e o app
+(`src/ui/Figure.tsx`) usam. No app ela segue `store.phase`, ouve o microfone do app no
+listening e a voz dele no speaking (a voz do sistema não tem áudio medível, então nesse
+caso ela inventa a sua), e o clique na poeira liga o app. Os ganchos de dev ficam em
+`window.__ultron` no protótipo e em `window.__figure` no app (lá `__ultron` é o store).
 
 - **Abrir:** com `npm run dev`, acesse `http://localhost:5173/proto/index.html`.
 - **Arquivo principal:** `proto/main.js`, com cerca de 2.500 linhas, Three.js e um único
@@ -552,14 +557,12 @@ repositório.
   - O sonho ficou mais raro (~3 min) do que o aprovado (20 a 40 s).
   - Com tédio alto, sai quase uma reação por minuto.
   - A instabilidade pode estar sutil demais.
-- **Lote 3, integração com o app:** o usuário disse que **ainda não é necessário**. Quando
-  vier, inclui:
-  - trocar a interface de `src/` pela figura, ligada a `store.phase` e ao nível real do
-    microfone;
-  - remover `src/ui/Ignition.tsx` (a tela de clique inicial);
-  - palavra de ativação → `call`;
-  - reconhecimento de voz → `forbiddenName` ("Jarvis", "Stark", "marionete");
-  - ferramentas → `taskDone` / `taskFailed`;
+- **Lote 3, integração com o app:** feito no branch `integracao-app`: a figura no lugar
+  da cena antiga, sem `Ignition.tsx` e `Boot.tsx`; o `mind` do app (`src/lib/mind.ts`)
+  com o relógio dele, palavra de ativação → `call`, "Jarvis"/"Stark"/"marionete" →
+  `forbiddenName`, ferramentas → `taskDone` / `taskFailed` (o bridge manda
+  `tool_result`). Um chamado abre o microfone na hora; a figura acorda no tempo da
+  resposta do `mind`. `src/scene/` ficou sem uso. Falta:
   - `tone.ts`: o humor vira instruções de tom para a IA. O tom muda a forma, nunca o
     conteúdo: ele sempre cumpre o pedido;
   - "ouvido passivo": som alto no dormant faz o batimento e os olhos reagirem.
