@@ -20,6 +20,11 @@ export const CHANNELS: Record<string, ChannelKind> = {
   'eyes.gain': 'gain',
   'eyes.boost': 'offset', // light added to the eyes
   'eyes.flicker': 'offset', // 0..1
+  'eyes.lid': 'gain', // how open the eyes are: 0 shut (a blink), above 1 wide
+  'eyes.squint': 'offset', // 0..1, the lower lids rise
+  'eyes.tilt': 'offset', // -1..1, + the upper lids lower toward the nose (a glare), - toward the temples
+  'eyes.pupil': 'gain', // the irises' size
+  'face.heat': 'offset', // 0..1, how hot the red glow of the face runs
   'breath.rate': 'gain',
   'breath.depth': 'gain',
   'body.rise': 'offset', // 0..1, a full deep breath lifting the whole body

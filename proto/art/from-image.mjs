@@ -10,19 +10,20 @@
 // as it is, including whatever asymmetry the render has.
 //
 //   lines.png     cyan: seams and plate edges (valleys, steps and ridges in the render)
+//   head-lines.png cyan: the head's seams as thin centre lines, and its lit bevels fainter
 //   fill.png      cyan: the shading of the plates, so the body has volume
 //   rim.png       cyan-white: the outline, the specular ridges and the halo outside
 //   dust.png      cyan: a little dust shed around the outline
 //   veins.png     red: every red light in the render (the engine runs an energy wave up it)
 //   redrim.png    red: the glow the red lights spill onto the metal around them
-//   lights.png    red: the eyes and the hottest points (driven by state)
+//   lights.png    red: the hottest points (driven by state); the eyes are not in it, the engine draws them
 //   chin.png      cyan: the chin emblem's outline and the edge where the head ends, a little denser than the lines
 //   plates.png    grey, not drawn: how much metal lies over whatever runs under it (the arteries), 0 open .. 1 a plate
-//   face-*.png    red: what the face does in each state; the
-//                 voice-print has several frames that the engine cycles through
+//   face-*.png    red: the glow of the face in each state
 //   preview-*.png everything composited, for eyeballing
 //   backdrop.png  copied from proto/img (the figure's own art is what changed)
-//   meta.json     sizes, face zone and particle budgets, read by the engine
+//   meta.json     sizes, face zone, particle budgets, and the geometry the engine draws from
+//                 (the arteries' course, the eyes, the mouth)
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -51,16 +52,6 @@ const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v))
 const smooth = (a, b, v) => {
   const t = clamp((v - a) / (b - a))
   return t * t * (3 - 2 * t)
-}
-function rng(seed) {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
 }
 function hash2(ix, iy) {
   let h = Math.imul(ix, 374761393) + Math.imul(iy, 668265263)
@@ -243,6 +234,118 @@ for (let i = 0; i < N; i++) {
   fillV[i] = Math.pow(clamp(Ys[i] / 0.7), 1.4) * smooth(0.03, 0.12, Y[i])
 }
 
+/* ------------------------------------------------------- the head's seams */
+
+// lineV above is several things at once (the gradient on both sides of a seam, the seam's
+// own valley, the lit edge beside it, the scratches of the brushed metal), so each seam
+// comes out as two or three blurred strokes. The head is small on screen and its seams are
+// what it is made of, so there they are found as lines: across a seam the render is a thin
+// valley (1-2 px dark, the gap between two plates), across a bevel a thin ridge (the lit edge
+// of a plate). The Hessian at the seams' own scale tells both apart; each is thinned to its
+// centre line (non-maximum suppression across it), kept where it is strong or joined to
+// something strong (hysteresis), and bits shorter than 10 px, which are the metal's texture,
+// are dropped. Seams at full weight, bevels at 0.45.
+
+function gaussBlur(a, sigma) {
+  const r = Math.ceil(sigma * 3)
+  const k = []
+  for (let i = -r; i <= r; i++) k.push(Math.exp(-(i * i) / (2 * sigma * sigma)))
+  const sum = k.reduce((s, v) => s + v, 0)
+  const t = new Float32Array(N)
+  const o = new Float32Array(N)
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let s = 0
+      for (let i = -r; i <= r; i++) s += a[y * W + clamp(x + i, 0, W - 1)] * k[i + r]
+      t[y * W + x] = s / sum
+    }
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let s = 0
+      for (let i = -r; i <= r; i++) s += t[clamp(y + i, 0, H - 1) * W + x] * k[i + r]
+      o[y * W + x] = s / sum
+    }
+  return o
+}
+
+/** Thin lines of the render: { str, nx, ny } for valleys (dark) or ridges (bright) at this scale. */
+function lineField(L, sigma, dark) {
+  const str = new Float32Array(N)
+  const nx = new Float32Array(N)
+  const ny = new Float32Array(N)
+  for (let y = 1; y < H - 1; y++)
+    for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x
+      const xx = L[i - 1] - 2 * L[i] + L[i + 1]
+      const yy = L[i - W] - 2 * L[i] + L[i + W]
+      const xy = (L[i - W - 1] + L[i + W + 1] - L[i - W + 1] - L[i + W - 1]) / 4
+      const tr = (xx + yy) / 2
+      const d = Math.sqrt(((xx - yy) / 2) ** 2 + xy * xy)
+      // across: the strongest curvature (up for a valley, down for a ridge); along: the other
+      const across = dark ? tr + d : tr - d
+      const along = dark ? tr - d : tr + d
+      const s = (dark ? across : -across) - Math.abs(along) * 0.5
+      if (s <= 0) continue
+      str[i] = s * sigma * sigma
+      let ex = xy
+      let ey = across - xx
+      let n = Math.hypot(ex, ey)
+      if (n < 1e-9) [ex, ey, n] = xx * (dark ? 1 : -1) >= yy * (dark ? 1 : -1) ? [1, 0, 1] : [0, 1, 1]
+      nx[i] = ex / n
+      ny[i] = ey / n
+    }
+  return { str, nx, ny }
+}
+
+/** The centre lines of a line field: thinned, hysteresis hi/lo, pieces shorter than minLen px dropped. */
+function centreLines({ str, nx, ny }, hi, lo, minLen) {
+  const at = (x, y) => {
+    const x0 = Math.floor(x)
+    const y0 = Math.floor(y)
+    const fx = x - x0
+    const fy = y - y0
+    const g = (a, b) => str[b * W + a]
+    return (g(x0, y0) * (1 - fx) + g(x0 + 1, y0) * fx) * (1 - fy) + (g(x0, y0 + 1) * (1 - fx) + g(x0 + 1, y0 + 1) * fx) * fy
+  }
+  const keep = new Float32Array(N)
+  for (let y = 2; y < H - 2; y++)
+    for (let x = 2; x < W - 2; x++) {
+      const i = y * W + x
+      if (str[i] >= lo && str[i] >= at(x + nx[i], y + ny[i]) && str[i] >= at(x - nx[i], y - ny[i])) keep[i] = str[i]
+    }
+  const seen = new Uint8Array(N)
+  const out = new Float32Array(N)
+  const stack = []
+  for (let i = 0; i < N; i++) {
+    if (keep[i] < lo || seen[i]) continue
+    const piece = []
+    let strong = false
+    seen[i] = 1
+    stack.push(i)
+    while (stack.length) {
+      const j = stack.pop()
+      piece.push(j)
+      if (keep[j] >= hi) strong = true
+      const x = j % W
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const k = j + dy * W + dx
+          if ((!dx && !dy) || x + dx < 0 || x + dx >= W || k < 0 || k >= N || seen[k] || keep[k] < lo) continue
+          seen[k] = 1
+          stack.push(k)
+        }
+    }
+    if (strong && piece.length >= minLen) for (const j of piece) out[j] = keep[j]
+  }
+  return out
+}
+
+const Lh = gaussBlur(Y, 1.1)
+const seamC = centreLines(lineField(Lh, 1.1, true), 0.05, 0.02, 10)
+const bevelC = centreLines(lineField(Lh, 1.1, false), 0.05, 0.02, 10)
+const headLineV = new Float32Array(N)
+for (let i = 0; i < N; i++) headLineV[i] = Math.max(smooth(0.02, 0.125, seamC[i]), 0.45 * smooth(0.02, 0.125, bevelC[i]))
+
 /* ----------------------------------------------------------- the layers */
 
 const CYAN = [0.1, 0.86, 1.0]
@@ -273,12 +376,35 @@ const lightsB = mk()
 
 const spill = blur(red, 8)
 const thick = blur(red, 1)
-const EYE_Y = 204 + OY
-const EYES = [
-  [442, EYE_Y, 1],
-  [578, EYE_Y, -1],
-]
-const eyeSlant = (14 * Math.PI) / 180
+
+// THE EYES are drawn by the engine, so that they can move (meta.eyes): an iris of rings
+// round a hot pupil, cut by an upper and a lower lid that are not drawn themselves (the user
+// had their red edges taken out), only felt by what they hide. Read off v2 (render
+// px): each iris is centred on its dark pupil, at (445.5, 201.5) and (581, 202), its red
+// reaching 13.5 px out; the lids show it from 6.5 px above the centre to 9.5 px below (the
+// upper one covers its top, which is what makes the stare cold). The socket is an almond
+// slanting 8 degrees down toward the nose, its corners 34 px out toward the temple and 30 px
+// in toward the nose. u runs along the eye toward its inner corner, v across it, downward.
+const EYES = {
+  slant: (8 * Math.PI) / 180,
+  outer: 34,
+  inner: 30,
+  up: 6.5,
+  lo: 9.5,
+  iris: 13.5,
+  rings: 2.5, // bright at the rim, every 1/rings of the radius inward, dark between
+  at: [
+    { c: [445.5, 201.5 + OY], side: 1 }, // the left eye (on screen); its inner corner is to the right
+    { c: [581, 202 + OY], side: -1 },
+  ],
+}
+const eyeUV = (x, y, { c, side }) => {
+  const dx = x - c[0]
+  const dy = y - c[1]
+  const cs = Math.cos(EYES.slant)
+  const sn = Math.sin(EYES.slant)
+  return [dx * side * cs + dy * sn, -dx * side * sn + dy * cs]
+}
 
 for (let y = 0; y < H; y++) {
   for (let x = 0; x < W; x++) {
@@ -287,10 +413,7 @@ for (let y = 0; y < H; y++) {
     if (hull[i]) {
       paint(linesB, i, CYAN, lineV[i] * 1.15 * sf)
       paint(fillB, i, CYAN, fillV[i] * 0.62 * sf)
-      if (y < HEAD_BOTTOM + 30) {
-        paint(headLinesB, i, CYAN, lineV[i] * 1.15 * headW(y))
-        paint(headFillB, i, CYAN, fillV[i] * 0.62 * headW(y))
-      }
+      if (y < HEAD_BOTTOM + 30) paint(headFillB, i, CYAN, fillV[i] * 0.62 * headW(y))
       const rimIn = Math.exp(-dIn[i] / 2.2)
       const spec = hlV[i] * smooth(0.35, 0.8, Ys[i])
       paint(rimB, i, ICE, (rimIn * 0.75 + spec * 0.9) * sf)
@@ -310,26 +433,20 @@ for (let y = 0; y < H; y++) {
     }
     const sp = clamp(spill[i] * 1.6 - red[i] * 0.6)
     paint(redRimB, i, ORANGE, sp * 0.9 * sf)
+    // (the outline's own crease, just outside it, is a line too)
+    if (y < HEAD_BOTTOM + 30) paint(headLinesB, i, CYAN, headLineV[i] * headW(y))
   }
 }
 
-// Eyes: the render's red irises are already in lights.png; this adds the
-// slanted almond halo around them that the engine swells when listening.
-for (const [ex, ey, side] of EYES) {
-  const a = side * eyeSlant
-  const ux = Math.cos(a)
-  const uy = Math.sin(a)
-  for (let y = ey - 50; y <= ey + 50; y++) {
-    for (let x = ex - 80; x <= ex + 80; x++) {
-      const dx = x - ex
-      const dy = y - ey
-      const u = dx * ux + dy * uy
-      const v = -dx * uy + dy * ux
-      const core = Math.exp(-((u * u) / (2 * 13 * 13) + (v * v) / (2 * 4.5 * 4.5)))
-      const halo = Math.exp(-((u * u) / (2 * 30 * 30) + (v * v) / (2 * 12 * 12)))
-      const i = y * W + x
-      paint(lightsB, i, ORANGE, halo * 0.3 + core * 0.6)
-      paint(lightsB, i, HOT, core * 0.55)
+// The render's irises come out of lights.png (the engine draws its own, see EYES), and with
+// them the almond halo they used to have, which read as a white-hot smudge at this size.
+for (const eye of EYES.at) {
+  for (let y = Math.round(eye.c[1]) - 50; y <= Math.round(eye.c[1]) + 50; y++) {
+    for (let x = Math.round(eye.c[0]) - 60; x <= Math.round(eye.c[0]) + 60; x++) {
+      const [u, v] = eyeUV(x + 0.5, y + 0.5, eye)
+      const keep = 1 - Math.exp(-2 * ((u / 40) ** 2 + (v / 18) ** 2))
+      const i = (y * W + x) * 3
+      for (let c = 0; c < 3; c++) lightsB[i + c] *= keep
     }
   }
 }
@@ -343,8 +460,14 @@ const faceBlob = (x, y, k = 1) => {
   const dy = (y - FACE.cy) / (FACE.sy * k)
   return Math.exp(-(dx * dx + dy * dy))
 }
-const MOUTH_Y = 372 + OY
-const BROW_Y = 186 + OY
+
+// THE MOUTH. The render has no lips: the mouth is the seam under the nose plate (render y
+// 331.5, from x ~470 to ~554, with a little red vent at each end, x 458 and 566), and under it
+// the jaw, a piece of its own: three rounded tabs hanging below the seam, the column between
+// the two cheek pods (|dx| < 24 from the middle, down to their lower ends at y 400), and the
+// chin cup with the emblem (|dx| < 82 below that, down to where the head ends). Speaking, the
+// engine drops that piece by up to 6 px and lights the slit it opens (meta.mouth, canvas px).
+const MOUTH = { seam: 331.5 + OY, x0: 458, x1: 566, column: 24, cupTop: 400 + OY, cup: 82, open: 6 }
 
 /** A soft round dab. */
 function dab(buf, x, y, c, k, rad) {
@@ -360,9 +483,6 @@ function dab(buf, x, y, c, k, rad) {
   }
 }
 
-// Several frames of the voice-print per intensity: the engine cycles through
-// them at random while the figure speaks, so the bars dance. [gain, seed]
-const BARS = { 'speak-a': [0.6, 3], 'speak-b': [0.6, 11], 'strong-a': [1.0, 7], 'strong-b': [1.0, 19] }
 
 /* ------------------------------------------------------------------ the chin */
 
@@ -407,29 +527,47 @@ for (let dx = -104; dx <= 104; dx += 0.5) {
 // Four arteries carry the figure's energy from the chest up to the head, and the engine
 // runs its effects along them (intensity, work, communication). It draws them as particles
 // along these routes, so they are not painted here: only their course goes into meta.json.
-// Agreed with the user on sketches over v2. Two inner arteries go up the red strip in the
-// gap between each neck cable and the plate, pass behind the plate's corner and the jaw,
-// come out at the cheek's lower edge and end in the red core of the cheek socket (not at the
-// eyes). Two outer ones run under the chest plates to the red cavity behind the collarbone,
-// climb the cable's outer edge, pass behind the side of the head, come out at the red
-// louvres of the temple and go over the skull to the crown. They keep to red channels that
-// are already in the render, and they cross from the neck into the head behind the jaw,
-// like the cables, so a turn of the head hides the join.
+// Agreed with the user on sketches over v2. Both pairs end at the eyes, a circuit round each:
+// the inner ones from below, the outer ones from above. Two inner arteries go up the red
+// strip in the gap between each neck cable and the plate, pass behind the plate's corner and
+// the jaw, come out at the cheek's lower edge, pass the red core of the cheek socket and go
+// on up the red strip of the cheekbone to just under the lower lid. Two outer ones run under
+// the chest plates to the red cavity behind the collarbone, climb the cable's outer edge,
+// pass behind the side of the head and come out at the red louvres of the temple; from there
+// they climb inside the skull nearly to the top of the forehead, hook over, and come down
+// the red seam of the forehead to just over the upper lid, at its outer half (they used to go
+// on over the skull to the crown). The course reaches the eyes, but the pulses that run along
+// it stop short of them except at the extremes (see the engine). They keep to red channels that are already in the render,
+// and they cross from the neck into the head behind the jaw, like the cables, so a turn of
+// the head hides the join.
 // Where they start, two ways (the engine picks one, ?arteries=ports|core): 'ports', each
 // side from the round red port on its own pectoral, or 'core', all four from one core under
 // the sternum plate (the user tried the core and did not like it).
 // Render px, left side; the right side is its mirror. [x, y, 1] = hidden behind a plate or
 // the head: no particles there, but it counts toward the length, so whatever runs along an
 // artery keeps time while it is out of sight.
-const NECK_TO_CHEEK = [
+// The last stretches, to the eyes, keep to the red channels exactly (measured on the render):
+// the inner one from the cheek's core up the red strip of the cheekbone, (426, 245) to
+// (400, 215), and into the corner of the socket; the outer one from the top of the temple's
+// louvres up INSIDE the skull, behind its side (the skull's edge runs from x 366 at y 150 to
+// 392 at y 90; going up outside it, the artery read as leaving the head), out at the top of
+// the red seam of the forehead (394, 95), which starts right at that edge, and down it to the
+// brow (414, 150), under the brow and out over the eye. Whatever lies under a plate is not
+// drawn (see the engine's arteryParticles): they show only in the cavities and seams.
+const NECK_TO_EYE = [
   [479, 610], [466, 576], [455, 542], [448, 512], [448, 492],
   [450, 466, 1], [452, 440, 1], [452, 418, 1],
   [450, 402], [446, 380], [438, 357], [431, 330], [431, 304],
+  [430, 284], [428, 264], [426, 246], [419, 236], [413, 230], [409, 225], [405, 220], [401, 215],
+  [404, 209], [409, 205],
 ]
-const CAVITY_TO_CROWN = [
+const CAVITY_TO_EYE = [
   [352, 532], [346, 506], [358, 480], [377, 456], [386, 428], [388, 402],
   [386, 372, 1], [384, 336, 1], [383, 300, 1],
-  [384, 286], [372, 256], [359, 224], [371, 192], [393, 166], [414, 150], [440, 112], [472, 72],
+  [384, 286], [372, 256], [359, 219],
+  [366, 200, 1], [371, 180, 1], [377, 158, 1], [383, 136, 1], [388, 117, 1], [392, 102, 1],
+  [394, 95], [397, 105], [402, 120], [405, 130], [409, 140], [413, 150],
+  [416, 160], [419, 171], [422, 180], [423, 186],
 ]
 // On the left port's red rim (an arc from (432, 645) round to (472, 705)), at its upper
 // right, so that the inner artery leaves the rim upward instead of crossing it.
@@ -439,14 +577,14 @@ const ARTERY_ORIGINS = {
   ports: {
     sources: [ARTERY_PORT],
     sourceSize: 0.7, // a smaller knot on the rim than the core's
-    inner: [ARTERY_PORT, [466, 634], [477, 612], [468, 584], ...NECK_TO_CHEEK.slice(2)],
-    outer: [[...ARTERY_PORT, 1], [425, 650, 1], [398, 610, 1], [372, 568, 1], ...CAVITY_TO_CROWN],
+    inner: [ARTERY_PORT, [466, 634], [477, 612], [468, 584], ...NECK_TO_EYE.slice(2)],
+    outer: [[...ARTERY_PORT, 1], [425, 650, 1], [398, 610, 1], [372, 568, 1], ...CAVITY_TO_EYE],
   },
   core: {
     sources: [ARTERY_CORE],
     shared: true, // one source in the middle for both sides
-    inner: [ARTERY_CORE, [510, 645], [503, 627], [492, 616], ...NECK_TO_CHEEK],
-    outer: [[...ARTERY_CORE, 1], [480, 655, 1], [440, 632, 1], [405, 604, 1], [374, 568, 1], ...CAVITY_TO_CROWN],
+    inner: [ARTERY_CORE, [510, 645], [503, 627], [492, 616], ...NECK_TO_EYE],
+    outer: [[...ARTERY_CORE, 1], [480, 655, 1], [440, 632, 1], [405, 604, 1], [374, 568, 1], ...CAVITY_TO_EYE],
   },
 }
 const mirrorX = (x, side) => (side < 0 ? x : 1023 - x)
@@ -492,10 +630,6 @@ function faceLayer(state) {
     listening: { size: 0.7, power: 0.55 },
     thinking: { size: 0.78, power: 1.05 },
     tooling: { size: 0.9, power: 1.1 },
-    'speak-a': { size: 0.95, power: 1.1 },
-    'speak-b': { size: 0.95, power: 1.1 },
-    'strong-a': { size: 1.15, power: 1.35 },
-    'strong-b': { size: 1.15, power: 1.35 },
   }[state]
 
   for (let y = 0; y < HEAD_BOTTOM; y++) {
@@ -516,26 +650,8 @@ function faceLayer(state) {
   // (Listening had waves arriving at the horns, thinking a spiral drawing in between the
   // eyes, tooling dashed rings in the cheek sockets and a dotted read-out down the nose; the
   // user had them all removed. The voice it hears now comes in down the arteries, the
-  // thought goes up them to the crown, and work beats through them: see the engine.)
-
-  if (BARS[state]) {
-    // A voice-print across the lower face: mirrored bars, tall in the middle.
-    const [gain, seed] = BARS[state]
-    const bars = 35
-    const r = rng(seed)
-    for (let k = 0; k < bars; k++) {
-      const x = CX - 80 + (k / (bars - 1)) * 160
-      const env = Math.exp(-(((x - CX) / 56) ** 2))
-      const hh = (6 + 36 * r() * env + 6 * env) * gain + 3
-      for (let t = -hh; t <= hh; t += 0.8) {
-        const k2 = (1 - Math.abs(t) / hh) * 0.9 + 0.25
-        dab(f, x, MOUTH_Y + t, ORANGE, 0.5 * k2, 0.95)
-        if (Math.abs(t) < hh * 0.35) dab(f, x, MOUTH_Y + t, HOT, 0.12 * gain, 0.8)
-      }
-    }
-    // A bright seam under the brow that swells with the voice.
-    for (let x = CX - 100; x <= CX + 100; x++) dab(f, x, BROW_Y + Math.sin(x * 0.05) * 2.5, ORANGE, 0.12 * gain, 1.4)
-  }
+  // thought goes up them to the crown, and work beats through them: see the engine. Speaking
+  // had a voice-print of bars across the lower face; the mouth speaks now, see MOUTH.)
   return f
 }
 
@@ -549,14 +665,16 @@ function out(name, buf) {
   console.log('wrote', name)
 }
 
-const STATES = ['idle', 'listening', 'thinking', 'tooling', 'speak-a', 'speak-b', 'strong-a', 'strong-b']
+const STATES = ['idle', 'listening', 'thinking', 'tooling']
 const structure = mk()
 for (let i = 0; i < N * 3; i++)
   structure[i] = linesB[i] + fillB[i] + rimB[i] + dustB[i] + redRimB[i] + lightsB[i] + chinB[i]
 
 out('lines.png', linesB)
 out('fill.png', fillB)
-out('head-lines.png', headLinesB)
+// linear: a seam at full weight is a full-weight line, a bevel under half that
+writePng(path.join(OUT, 'head-lines.png'), headLinesB.map((v) => clamp(v)), W, H)
+console.log('wrote head-lines.png')
 out('head-fill.png', headFillB)
 out('rim.png', rimB)
 out('dust.png', dustB)
@@ -602,6 +720,8 @@ fs.writeFileSync(
       head: true,
       chin: true, // the emblem's outline and the edge where the head ends (see the chin section)
       arteries, // the course of the four arteries for each choice of origin, canvas px (see the arteries section)
+      eyes: EYES, // the eyes the engine draws: their geometry, canvas px (see the eyes section)
+      mouth: MOUTH, // the slit under the nose plate and the jaw piece under it, canvas px (see the mouth section)
       dimScale: 0.5, // the cyan of the head gives way to the red glow only half as far
       budget: {
         lines: 21000,
@@ -616,7 +736,8 @@ fs.writeFileSync(
         lights: 4200,
         veins: 8000,
         face: 4500,
-        faceBars: 2500,
+        eyes: 1700,
+        mouth: 500,
         backdrop: 15000,
       },
       source: path.relative(path.join(here, '..', '..'), SRC).replaceAll('\\', '/'),

@@ -99,7 +99,7 @@ uma camada própria, então nem todas ficam visíveis ao mesmo tempo. Ela vai su
 ao app**.
 
 - **Abrir:** com `npm run dev`, acesse `http://localhost:5173/proto/index.html`.
-- **Arquivo principal:** `proto/main.js`, com cerca de 2.200 linhas, Three.js e um único
+- **Arquivo principal:** `proto/main.js`, com cerca de 2.500 linhas, Three.js e um único
   vertex shader para todas as camadas. A audição (microfone e voz simulada) fica em
   `proto/hearing.js`.
 
@@ -109,10 +109,16 @@ ao app**.
   das referências do usuário. `v1`, `v3` e `v4` são alternativas que o código não usa.
 - **Gerador:** `node proto/art/from-image.mjs` divide a render em camadas e grava tudo em
   `proto/img-v2/`:
-  - linhas, contorno, poeira, veias vermelhas, olhos e o rosto de cada estado;
+  - linhas, contorno, poeira, veias vermelhas, luzes e o brilho do rosto de cada estado;
+  - as frestas da cabeça (`head-lines.png`) como **linhas centrais finas**: um detector de
+    vales e cristas (Hessiana) acha cada fresta, afina até 1 px e descarta a textura do
+    metal. As bordas iluminadas entram com peso 0,45;
   - o contorno do queixo (`chin.png`);
   - o mapa de placas (`plates.png`), que não é desenhado e só diz onde há metal por cima;
-  - `meta.json`, com orçamentos de partículas e o trajeto das artérias.
+  - `meta.json`, com orçamentos de partículas, o trajeto das artérias e a geometria dos
+    **olhos** e da **boca**, que o motor desenha sozinho (seção 4.2).
+- **Barras de voz:** removidas da arte da v2; a boca fala no lugar delas. A arte procedural
+  ainda as tem.
 - **Arte antiga:** a versão procedural fica em `proto/art/generate.mjs` → `proto/img/` e
   abre com `?art=procedural`.
 - **Coordenadas:** o canvas tem 1024×1100 px, e y no canvas = y na render + 76. Rode o
@@ -144,7 +150,20 @@ ao app**.
   - **Tronco:** gira até 0,14 rad, ~0,55 s atrás da cabeça.
 - **Clique:** um pulso de luz atravessa o corpo (ganho 0,8, ou 2,0 nas veias).
 - **Artérias:** quatro, saindo dos portais vermelhos do peito.
-  - **Trajeto:** as 2 internas vão até as bochechas e as 2 externas até o topo da cabeça.
+  - **Trajeto:** as quatro terminam nos olhos, num circuito em volta de cada um.
+    - As internas sobem pelo pescoço e pela bochecha e chegam por baixo, pela faixa
+      vermelha do osso da bochecha, até logo abaixo da pálpebra de baixo.
+    - As externas sobem dos louvres da têmpora **escondidas por dentro do crânio** (por fora
+      pareciam sair da borda da cabeça), reaparecem no topo da fresta vermelha da testa e
+      descem por ela até logo acima da pálpebra de cima.
+  - **Só nas aberturas:** onde há placa por cima não há partícula de artéria, em todo o
+    trajeto. Elas aparecem só em cavidades, cortes e frestas (`arteryParticles` filtra por
+    `plates.png`).
+  - **Pulsos até os olhos só nos extremos:** os pulsos somem nos últimos 100 px (`aArt.w`
+    = quanto falta até o fim). Só chegam aos olhos com `uArtReach`: artérias no calor
+    máximo, `face.heat` alto ou onda forte. Dev: `__ultron.artReach = 1`.
+    - Antes, as externas iam até o topo da cabeça. O usuário escolheu o "gancho" num
+      esboço com duas opções; a outra era um arco sobre o olho.
   - **Discretas:** passam por baixo das placas de metal (`plates.png`) e só aparecem em
     alta intensidade.
   - **Intensidade (`artHeat`):** volume da voz mais o que o humor acrescenta.
@@ -156,10 +175,37 @@ ao app**.
   - olhos como brasa que respira.
 - **`waking`:** é a resposta do orquestrador ao chamado (seção 5.6), não tem mais animação
   fixa.
+- **Amostragem uniforme:** as camadas da figura são amostradas por difusão de erro
+  (`sample(..., { even: true })`), não por sorteio. É o mesmo número de partículas, mas sem
+  grumos nem buracos, e por isso as frestas aparecem como linhas. A poeira e o fundo continuam
+  aleatórios.
+- **Olhos** (`eyeParticles` e o bloco THE EYES do shader), desenhados pelo motor a partir
+  de `meta.eyes`:
+  - **Partes:** só a íris de anéis com pupila quente. As pálpebras não são desenhadas (o
+    usuário tirou as bordas vermelhas): aparecem pelo que cortam da íris.
+  - **Por olho** (`uEyeSt`): abertura (0 fechado, >1 arregalado), squint (a pálpebra de
+    baixo sobe), tilt (+ = pálpebra mais baixa perto do nariz, a cara de raiva) e tamanho da
+    íris. Os anéis giram no thinking como lente de câmera (`uEyeSpin`).
+  - **Olhar:** a íris anda até 4,5 px na órbita e chega antes da cabeça.
+  - **Piscar:** a cada 2,5–7 s quando acordado, às vezes duplo.
+  - **Por estado:** `lid`, `squint`, `pupil` e `spin` em `STATE`. Dormant tem pálpebra
+    pesada; listening, olho arregalado; thinking, semicerrado com anéis girando; tooling, olho
+    estreito com a íris contraindo a cada batida.
+  - **Humor:** chega pelos canais `eyes.lid`, `eyes.squint`, `eyes.tilt` e `eyes.pupil`
+    (seção 5.7).
+- **Boca** (`meta.mouth`): a fresta sob a placa do nariz.
+  - **Como fala:** a peça do queixo (as abas, a coluna entre os casulos das bochechas e a
+    concha do queixo) desce até 6 px com a voz, e a fenda aberta acende em vermelho
+    (camada `slit`).
+  - **Voz:** no protótipo é simulada (`voiceOut` em `hearing.js`, com pausas curtas). O app
+    passaria a amplitude do TTS.
+- **Brilho vermelho do rosto:** reflete emoção e intensidade. Fica até ~2× mais forte com
+  `face.heat` (irritação, resposta seca, falha), com o calor das artérias e com a própria
+  fala.
 - **Papel de cada artéria** (combinado com o usuário):
   - externas descendo: `listening` (a voz que entra);
   - externas subindo: `thinking`;
-  - internas subindo: `speaking` (a voz que sai; ainda não feito);
+  - internas subindo: `speaking` (a voz que sai);
   - as quatro em ritmo de motor: `tooling`.
 - **`listening`:** queixo erguido.
   - Cada sílaba da voz (microfone real com `M`, ou voz simulada) manda um pulso descendo
@@ -167,8 +213,10 @@ ao app**.
   - Os olhos reagem à voz; o fim da frase acende os portais do peito.
   - A poeira em volta do corpo (fundo e a camada junto às placas) se agita com o áudio.
   - Silêncio: impaciência aos 6 s e desprezo aos 16 s (seção 5.5).
-- **`thinking`:** pulsos sobem as artérias externas até o alto do crânio, onde a luz se
-  junta. Olhar ausente, fixo num ponto sorteado; olhos a 0,7 com falhas; corpo parado.
+- **`thinking`:** pulsos sobem as artérias externas e descem até os olhos; cada um que chega
+  acende os olhos, mais à medida que o pensamento se acumula (~2 s). Olhar ausente, fixo num
+  ponto sorteado; olhos a 0,7 com falhas e anéis girando; corpo parado. (A luz que se juntava
+  no alto do crânio, `uCrown`, saiu.)
 - **`tooling`:** o motor do peito manda pulsos pelas quatro artérias, alternando
   esquerda e direita. O trabalho aparece nos 4 discos vermelhos (`DISCS`):
   - os do peito são pistões, que pulsam a cada batida;
@@ -177,6 +225,38 @@ ao app**.
   - **Fim da tarefa:** `T` = sucesso: os pulsos já lançados terminam o trajeto, nenhum
     novo sai, as turbinas desaceleram e os discos dão um clarão. `Y` = falha: o motor
     engasga, os pulsos travam, piscam e apagam, e as turbinas param com um tranco.
+- **`speaking`** (o inverso do listening: a voz sai pelas internas):
+  - **Pulsos:** cada **palavra** falada (não cada sílaba, a pedido do usuário) manda um pulso
+    subindo as internas, do peito até o núcleo
+    vermelho da bochecha (`CHEEK`, ao lado da boca; `cheekS` ≈ 366 px no trajeto), onde morre
+    e acende um pouco a bochecha (`uCheek`, nas camadas vermelhas). As palavras vêm de
+    `hearing.js` (`wordOnset`, `word`): começam depois de a voz ficar abaixo de 30% do pico
+    por 0,04 s. A voz simulada agora fala em palavras de 1 a 3 sílabas, com um respiro curto
+    entre elas. Só as palavras mais altas
+    seguem pela maçã do rosto até o olho e o acendem ao chegar. O fim da frase manda um último
+    pulso, mais forte, e a bochecha acende inteira. As externas ficam quietas. Uniforms
+    `uArtSpeak` e `uArtOut[8]`.
+  - **Respiração de quem fala:** em cada pausa puxa o ar (sobe ~2 px em ¼ s) e vai soltando
+    enquanto fala (`speak.air`).
+  - **Ênfase:** uma sílaba acentuada inclina a cabeça para baixo (~1°, `nodNow` somado ao
+    `uPitch`) e manda uma onda pela poeira, saindo da boca para todos os lados e atravessando
+    a janela inteira até o canto mais distante (`waveReach`, recalculado no `layout()`), a
+    650 px/s (`uPush`). É mais forte na origem (até ~9 px de empurrão) e perde força no
+    caminho: ~45% na metade e 15% na borda, onde some. A frente da onda alarga de 40 para
+    ~110 px. `uPushAt` dá a boca nas coordenadas de cada camada: o fundo tem imagem e escala
+    próprias, e antes a onda nascia ao lado da figura.
+  - **Piscar:** nas pausas; uma piscada que vence no meio da frase espera a próxima pausa.
+  - **Tom (`TONE`):** o estilo com que atendeu o chamado continua na fala (`answeredAs`,
+    zerado ao voltar ao dormant). Sem chamado, vale o humor dominante (`MOOD_TONE`).
+    - `eager`: claro e direto;
+    - `weary`: lento, fraco, pálpebra pesada, nada chega aos olhos;
+    - `curt`: frases curtas e rápidas, pulsos quentes, olhos estreitos, rosto mais vermelho;
+    - `regal`: pausado, queixo erguido, pulsos largos e lentos.
+
+    Cada tom muda a voz simulada (`voiceOut.setVoice`), a velocidade, força e largura dos
+    pulsos, os limiares de alcance e ênfase, o aceno, o fôlego, o calor do rosto, o brilho
+    dos olhos e a postura. Os limiares foram ajustados para a voz simulada; a voz real do app
+    vai pedir novo ajuste.
 - **Removido a pedido do usuário:** a linha vermelha horizontal sobre os olhos (camada
   `streak`), o arrasto de vento na figura montada, a "faixa larga" do waking, as ondas em
   volta dos ouvidos (listening), a espiral (thinking), as placas se ajustando e os anéis do
@@ -206,11 +286,15 @@ ao app**.
 **`window.__ultron`:**
 - `pose = {yaw, pitch, body, bodyPitch}` congela a pose;
 - `artHeat` fixa a intensidade das artérias;
+- `eyes = {open, squint, tilt, pupil, x, y, spin}` fixa os olhos; `mouth = 0..1` fixa a
+  boca aberta;
 - `hold`, `trailAt` e `clickAge` congelam animações;
 - `layers` dá acesso às camadas;
 - `mind` é o orquestrador;
 - `call()` e `dream()` disparam o chamado e o sonho;
 - `hearing` e `listen` expõem a audição e os pulsos do listening;
+- `speak` expõe o speaking; `tone = 'eager' | 'weary' | 'curt' | 'regal'` fixa o tom da
+  próxima vez que ele começar a falar;
 - `info()` mostra o estado das interações.
 
 ---
@@ -326,10 +410,13 @@ cai.
   | `lookAway` | Mouse errático | Desvia o olhar até o mouse acalmar |
   | `watchExit` | Mouse sai da janela | Olha a borda por onde ele saiu |
   | `waitForOrders` | Tédio cruza 0,85 | Ergue a cabeça e encara o centro |
-  | `impatient` | 6 s sem voz no `listening` | Queixo sobe, duas piscadas, artérias aquecem |
-  | `scorn` | 16 s sem voz | Desvia o olhar e se ergue; irritação +0,1 |
-  | `pleased` | `taskDone` | Queixo erguido, olhos e brilho sobem |
-  | `failed` | `taskFailed` | Olhos tremem, o peito esfarela, artérias quentes |
+  | `impatient` | 6 s sem voz no `listening` | Queixo sobe, duas piscadas de pálpebra, artérias aquecem |
+  | `scorn` | 16 s sem voz | Desvia o olhar com as pálpebras baixas e se ergue; irritação +0,1 |
+  | `pleased` | `taskDone` | Queixo erguido, olhos semicerrados de satisfação, brilho sobe |
+  | `failed` | `taskFailed` | Olhos tremem e se estreitam, o peito esfarela, rosto e artérias quentes |
+
+  Expressões contínuas dos olhos: o tédio pesa as pálpebras; a irritação estreita, inclina
+  em raiva, contrai a íris e esquenta o rosto; a vaidade baixa um pouco as pálpebras.
 
   O gatilho de silêncio é `on: 'quiet:<estímulo>:<s>'`: dispara uma vez por trecho de
   silêncio, e a contagem recomeça com o estímulo ou com a troca de contexto. Uma reação
@@ -384,6 +471,8 @@ O evento `answer` traz `{style, preludes, delay, settle}`. No `proto/`, a figura
 | `gaze.x`, `gaze.y`, `gaze.weight` | Para onde olhar; o peso define quanto o `mind` manda sobre o cursor |
 | `head.pitch`, `head.follow`, `head.restless` | Inclinação, rapidez para seguir e inquietação da cabeça |
 | `eyes.gain`, `eyes.boost`, `eyes.flicker` | Brilho, luz extra e tremor dos olhos |
+| `eyes.lid`, `eyes.squint`, `eyes.tilt`, `eyes.pupil` | Abertura (0 = piscar), pálpebra de baixo subindo, inclinação da de cima (+ = raiva) e tamanho da íris |
+| `face.heat` | Quanto o brilho vermelho do rosto esquenta |
 | `breath.rate`, `breath.depth` | Ritmo e profundidade da respiração |
 | `body.rise` | Fôlego fundo, que ergue o corpo todo (o suspiro) |
 | `glow` | Brilho geral |
@@ -443,10 +532,21 @@ repositório.
 
 ## 7. Pendências e próximos passos
 
-- **Estados ativos da figura:** listening, thinking e tooling estão feitos (seção 4.2).
-  Falta o **speaking**: as artérias internas levam a voz para fora, até as bochechas, com a
-  emoção na fala. Thinking e tooling foram testados ao vivo pelo usuário, mas não têm
-  checagem headless.
+- **Estados ativos da figura:** listening, thinking, tooling e speaking estão feitos (seção
+  4.2). Thinking e tooling foram testados ao vivo pelo usuário, mas não têm checagem
+  headless. O speaking foi verificado headless (pulsos, bochecha, aceno, fôlego, piscadas e
+  ondas, nos quatro tons) e falta o teste ao vivo.
+- **Intensidade da emoção na fala** (proposta aprovada para depois, não implementada): hoje
+  a emoção só entra pelo tom, escolhido uma vez no começo da fala. A ideia é um valor
+  contínuo `intensidade` (a emoção dominante, 0..1), recalculado ao vivo durante a fala:
+  - pulsos: velocidade ×(1 + 0,8·int), força ×(1 + 0,5·int), limite para chegar aos olhos
+    descendo até ~0,2 com int alta;
+  - ondas: força ×(0,6 + 0,8·int), limite de ênfase descendo ~0,15, alcance pleno só com
+    int alta; tédio dá ondas fracas e raras;
+  - cada emoção puxa numa direção: irritação acelera e esquenta, vaidade alarga e
+    desacelera, tédio enfraquece; o tom continua sendo a base.
+- **Rosto novo** (frestas, olhos e boca): verificado headless; falta o retorno do usuário
+  ao vivo.
 - **Feedback ao vivo do usuário** ainda não chegou para: dormant, reações ociosas,
   respostas ao chamado, instabilidade e placa.
   - O sonho ficou mais raro (~3 min) do que o aprovado (20 a 40 s).
