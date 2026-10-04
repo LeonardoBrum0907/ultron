@@ -359,6 +359,32 @@ type Item = {
   audio?: Promise<string | null> | null
 }
 
+const MUTE_KEY = 'ultron.muted'
+
+/**
+ * Voice off: he still answers, in the transcript, but says nothing aloud. Kept
+ * across reloads, and checked before any audio is made, so a muted Ultron
+ * never spends a voice credit.
+ */
+let muted = (() => {
+  try {
+    return localStorage.getItem(MUTE_KEY) === '1'
+  } catch {
+    return false
+  }
+})()
+
+export const isMuted = () => muted
+
+export function setMuted(on: boolean): void {
+  muted = on
+  try {
+    localStorage.setItem(MUTE_KEY, on ? '1' : '0')
+  } catch {
+    // Private mode: muted for this page only.
+  }
+}
+
 export function createSpeaker(): Speaker {
   const queue: Item[] = []
   let buffer = ''
@@ -377,7 +403,7 @@ export function createSpeaker(): Speaker {
   }
 
   const enqueue = (sentence: string, priority = false) => {
-    if (cancelled) return
+    if (cancelled || muted) return
     // Shape once here so both engines get the same text — stripped markdown,
     // and the comma before "sir" that buys the beat.
     const text = shape(sentence)

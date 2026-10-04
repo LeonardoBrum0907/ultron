@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Figure } from './ui/Figure'
+import { TextBox } from './ui/TextBox'
 import { Hud } from './ui/Hud'
 import { Diagnostics } from './ui/Diagnostics'
 import { useStore } from './store'
@@ -335,6 +336,23 @@ export default function App() {
       return
     }
 
+    void respond(said)
+  }
+
+  /**
+   * A typed line. Same turn as a spoken one, and like speech it cuts off
+   * whatever he was saying. From dormant it is also a call, as a spoken
+   * "Ultron, do X" in one breath is.
+   */
+  const onTyped = (text: string) => {
+    const phase = store.getState().phase
+    if (phase === 'offline' || phase === 'boot') return
+    const said = text.replace(LEADING_NAME, '').trim()
+    if (!said) return
+    store.getState().setError(null)
+    if (phase === 'dormant') mind.stimulate('call')
+    if (isForbidden(said)) mind.stimulate('forbiddenName')
+    onSpeechStart()
     void respond(said)
   }
 
@@ -740,6 +758,7 @@ export default function App() {
     <>
       <Figure hears={hears} says={says} onIgnite={() => void powerOn()} />
       <Hud />
+      <TextBox onSend={onTyped} onMute={(off) => off && speaker.current?.cancel()} />
       <Diagnostics />
     </>
   )

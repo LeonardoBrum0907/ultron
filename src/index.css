@@ -321,7 +321,7 @@ body::after {
 
 .hud-bottom {
   position: absolute;
-  bottom: 44px;
+  bottom: 12px;
   left: 0;
   right: 0;
   text-align: center;
@@ -1905,4 +1905,62 @@ canvas.figure {
   height: 100%;
   display: block;
   z-index: 0;
+}
+
+/* Typed input, and the switch that turns his voice off */
+
+.textbox {
+  position: fixed;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%);
+  z-index: 6;
+  width: min(560px, 84vw);
+  display: flex;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.textbox input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 6px;
+  outline: none;
+  background: rgba(1, 6, 12, 0.6);
+  color: #eaf9ff;
+  font: inherit;
+  letter-spacing: 0.02em;
+}
+
+.textbox input:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.textbox input::placeholder {
+  color: rgba(234, 249, 255, 0.35);
+}
+
+.textbox input:disabled {
+  opacity: 0.4;
+}
+
+.textbox-mute {
+  flex: 0 0 auto;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 6px;
+  background: rgba(1, 6, 12, 0.6);
+  color: color-mix(in srgb, var(--accent) 70%, transparent);
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.textbox-mute.on {
+  color: #eaf9ff;
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
