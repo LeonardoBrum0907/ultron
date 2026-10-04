@@ -22,10 +22,15 @@ export type Capabilities = {
   stt: boolean
   /** ElevenLabs text-to-speech is reachable via the bridge. */
   tts: boolean
+  /** The language Ultron hears and speaks, as a BCP 47 tag. */
+  lang: string
 }
 
+/** Used until the bridge says otherwise, and in direct mode. */
+const DEFAULT_LANG = 'pt-BR'
+
 /** Browser-only until the probe says otherwise. Safe default: the app works. */
-let current: Capabilities = { stt: false, tts: false }
+let current: Capabilities = { stt: false, tts: false, lang: DEFAULT_LANG }
 let probed = false
 
 /** The last known capabilities. Read synchronously by the voice and speech
@@ -47,7 +52,7 @@ export function capabilitiesProbed(): boolean {
 export async function probeCapabilities(): Promise<Capabilities> {
   if (BACKEND !== 'bridge') {
     // No bridge to ask. Direct mode has no server-side speech, so browser only.
-    current = { stt: false, tts: false }
+    current = { stt: false, tts: false, lang: DEFAULT_LANG }
     probed = true
     return current
   }
@@ -56,8 +61,8 @@ export async function probeCapabilities(): Promise<Capabilities> {
       signal: AbortSignal.timeout(3000),
     })
     if (res.ok) {
-      const h = (await res.json()) as { stt?: boolean; tts?: boolean }
-      current = { stt: Boolean(h.stt), tts: Boolean(h.tts) }
+      const h = (await res.json()) as { stt?: boolean; tts?: boolean; lang?: string }
+      current = { stt: Boolean(h.stt), tts: Boolean(h.tts), lang: h.lang || DEFAULT_LANG }
     }
   } catch {
     // Bridge down or slow — stay on the browser engines rather than blocking
@@ -65,6 +70,11 @@ export async function probeCapabilities(): Promise<Capabilities> {
   }
   probed = true
   return current
+}
+
+/** Whether Ultron is speaking English, the language its voices were tuned in. */
+export function speaksEnglish(): boolean {
+  return /^en\b/i.test(current.lang)
 }
 
 /** A short human label for the HUD: what voice stack is actually in play. */

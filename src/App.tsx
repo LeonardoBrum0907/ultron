@@ -62,11 +62,12 @@ const newId = () =>
 
 /** The same mishearings voice.ts accepts for the wake word — otherwise a turn
  *  that woke him as "travis" gets that word sent on to the model as a question. */
-const NAME = '(?:ultron|ultrawn|ultran|ultrin|altron|oltron|all tron|ultr)'
+const NAME = '(?:ultron|ultrom|utron|ultrawn|ultran|ultrin|altron|oltron|all tron|ultr)'
+const GREETING = '(?:hey|hi|ok|okay|yo|ei|oi|olá)'
 /** A bare vocative — "Ultron", "hey ultron" — with nothing asked. */
-const BARE_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}[\\s,.!?]*$`, 'i')
+const BARE_NAME = new RegExp(`^${GREETING}?\\s*${NAME}[\\s,.!?]*$`, 'i')
 /** A leading vocative on a real command: "Ultron, what's the weather". */
-const LEADING_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}\\b[\\s,.:!?-]*`, 'i')
+const LEADING_NAME = new RegExp(`^${GREETING}?\\s*${NAME}\\b[\\s,.:!?-]*`, 'i')
 
 export default function App() {
   const store = useStore

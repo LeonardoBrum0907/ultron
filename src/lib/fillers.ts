@@ -15,46 +15,75 @@
  *   - No filler words, no enthusiasm, no apology, no exclamation marks.
  *   - "Sir" fronted means urgency; final means routine. These are all routine,
  *     so it goes at the end, and only sometimes.
+ *
+ * Every pool is kept in English and Brazilian Portuguese, picked by the
+ * language the bridge reports. The Portuguese follows the same grammar
+ * ("Compilando.", "senhor" at the end). They are short on purpose: the bridge
+ * caches each line's audio after its first synthesis, so they cost voice
+ * credits once.
  */
+import { speaksEnglish } from './capabilities'
+
+type Lines = { en: string[]; pt: string[] }
 
 /** Said as soon as the first tool fires, before any answer exists. */
-const WORKING = [
-  'Working on it, sir.',
-  'Compiling.',
-  'Retrieving.',
-  'Accessing the archive.',
-  'Cross-referencing.',
-  'Running the query now.',
-  'Searching.',
-  'Under way.',
-]
+const WORKING: Lines = {
+  en: [
+    'Working on it, sir.',
+    'Compiling.',
+    'Retrieving.',
+    'Accessing the archive.',
+    'Cross-referencing.',
+    'Running the query now.',
+    'Searching.',
+    'Under way.',
+  ],
+  pt: [
+    'Trabalhando nisso, senhor.',
+    'Compilando.',
+    'Recuperando.',
+    'Acessando o arquivo.',
+    'Cruzando os dados.',
+    'Executando a consulta.',
+    'Procurando.',
+    'Em andamento.',
+  ],
+}
 
 /** Acknowledging an order where no tool is involved. */
-const ACKNOWLEDGE = [
-  'As you wish, sir.',
-  'Very good, sir.',
-  'Certainly.',
-  'Understood.',
-  'Consider it done.',
-  'Directly, sir.',
-]
+const ACKNOWLEDGE: Lines = {
+  en: [
+    'As you wish, sir.',
+    'Very good, sir.',
+    'Certainly.',
+    'Understood.',
+    'Consider it done.',
+    'Directly, sir.',
+  ],
+  pt: [
+    'Como desejar, senhor.',
+    'Muito bem, senhor.',
+    'Certamente.',
+    'Entendido.',
+    'Considere feito.',
+    'Pois não, senhor.',
+  ],
+}
 
 /** Answering to his name, before the user has said what they want. */
-const ATTENTION = [
-  'Yes, sir?',
-  'Sir?',
-  'At your service, sir.',
-  'Standing by.',
-  'Awake, sir.',
-]
+const ATTENTION: Lines = {
+  en: ['Yes, sir?', 'Sir?', 'At your service, sir.', 'Standing by.', 'Awake, sir.'],
+  pt: ['Sim, senhor?', 'Senhor?', 'Às suas ordens, senhor.', 'A postos.', 'Acordado, senhor.'],
+}
 
 /**
  * Avoids repeating the same phrase twice running, which is what makes canned
  * lines sound canned. Keeps one slot of history per pool.
  */
-function makePicker(pool: string[]) {
+function makePicker(lines: Lines) {
   let last = -1
   return () => {
+    const pool = speaksEnglish() ? lines.en : lines.pt
     if (pool.length < 2) return pool[0] ?? ''
     let i = last
     while (i === last) i = Math.floor(Math.random() * pool.length)
@@ -88,10 +117,13 @@ type Rule = {
   server?: RegExp
   /** Matched against the tool segment, or the whole name for a built-in. */
   tool?: RegExp
-  lines: string[]
+  lines: Lines
 }
 
-const FOOTAGE = ['Assembling the footage.', 'Rendering the sequence.']
+const FOOTAGE: Lines = {
+  en: ['Assembling the footage.', 'Rendering the sequence.'],
+  pt: ['Montando as imagens.', 'Renderizando a sequência.'],
+}
 
 const BY_TOOL: Rule[] = [
   // Video sits above image because higgsfield and palmier both do either, so
@@ -101,50 +133,50 @@ const BY_TOOL: Rule[] = [
   {
     server: /higgsfield|openrouter-image|dalle|flux|midjourney/,
     tool: /image|photo|thumbnail|render|upscale|seedream/,
-    lines: ['Rendering.', 'Composing it now.'],
+    lines: { en: ['Rendering.', 'Composing it now.'], pt: ['Renderizando.', 'Compondo agora.'] },
   },
   // The editors, once the two rules that read the verb have had their turn.
   { server: /palmier|heygen|runway|descript/, lines: FOOTAGE },
   {
     server: /playwright|puppeteer|browserbase|chrome/,
     tool: /\bbrowser\b|navigate/,
-    lines: ['Opening the browser.', 'Navigating.'],
+    lines: { en: ['Opening the browser.', 'Navigating.'], pt: ['Abrindo o navegador.', 'Navegando.'] },
   },
   {
     server: /android|\badb\b|simulator/,
     tool: /\bdevice\b|\bapk\b|\bphone\b/,
-    lines: ['Reaching the device.', 'Connecting to your phone.'],
+    lines: { en: ['Reaching the device.', 'Connecting to your phone.'], pt: ['Acessando o aparelho.', 'Conectando ao seu celular.'] },
   },
   {
     server: /gmail|\bmail\b/,
     tool: /gmail|\bmail\b|email|inbox/,
-    lines: ['Checking your mail.', 'Reading the inbox.'],
+    lines: { en: ['Checking your mail.', 'Reading the inbox.'], pt: ['Verificando seus e-mails.', 'Lendo a caixa de entrada.'] },
   },
   // Calendar keys off "calendar" alone. "event" used to live here, which is how
   // a Mixpanel event query came out as "Checking your calendar."
   {
     tool: /calendar|\bdiary\b|\bmeeting\b/,
-    lines: ['Checking your calendar.', 'Consulting the diary.'],
+    lines: { en: ['Checking your calendar.', 'Consulting the diary.'], pt: ['Consultando sua agenda.', 'Verificando os compromissos.'] },
   },
   {
     server: /elevenlabs|openai-tts/,
     tool: /speech|\bvoice\b|\btts\b|text_to_sound/,
-    lines: ['Synthesising.', 'Working on it, sir.'],
+    lines: { en: ['Synthesising.', 'Working on it, sir.'], pt: ['Sintetizando.', 'Trabalhando nisso, senhor.'] },
   },
   {
     server: /spotify|sonos/,
     tool: /\bplay\b|\bmusic\b|playlist|\btrack\b/,
-    lines: ['Queuing it up.', 'Putting it on.'],
+    lines: { en: ['Queuing it up.', 'Putting it on.'], pt: ['Colocando na fila.', 'Pondo para tocar.'] },
   },
   {
     server: /^home|homeassistant|\bhue\b|\bhass\b/,
     tool: /\blights?\b|thermostat|\bdimmer\b/,
-    lines: ['Adjusting it now.', 'Seeing to it, sir.'],
+    lines: { en: ['Adjusting it now.', 'Seeing to it, sir.'], pt: ['Ajustando agora.', 'Cuidando disso, senhor.'] },
   },
   {
     server: /github|linear|jira|sentry/,
     tool: /\brepo\b|repository|\bissues?\b|pull_request|\bcommit\b/,
-    lines: ['Checking the repository.', 'Consulting the tracker.'],
+    lines: { en: ['Checking the repository.', 'Consulting the tracker.'], pt: ['Verificando o repositório.', 'Consultando os chamados.'] },
   },
   // Also where the anonymously named analytics servers land — theirs are bare
   // UUIDs, so only the tool half says anything: Get-Report, Get-Events,
@@ -153,12 +185,12 @@ const BY_TOOL: Rule[] = [
   {
     server: /mixpanel|clarity|posthog|amplitude/,
     tool: /analytic|\bmetrics?\b|\breports?\b|\bevents?\b|cohort|funnel|dashboard|\bquery\b/,
-    lines: ['Running the query.', 'Pulling the figures.'],
+    lines: { en: ['Running the query.', 'Pulling the figures.'], pt: ['Executando a consulta.', 'Levantando os números.'] },
   },
   {
     server: /\bexa\b|serper|serpapi|perplexity|tavily|brave/,
     tool: /search|\bweb\b|\bfetch\b|crawl|research/,
-    lines: ['Searching.', 'Consulting the record.'],
+    lines: { en: ['Searching.', 'Consulting the record.'], pt: ['Procurando.', 'Consultando os registros.'] },
   },
 ]
 

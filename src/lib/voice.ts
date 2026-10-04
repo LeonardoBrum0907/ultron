@@ -79,7 +79,7 @@ const WAKE_DEBOUNCE = 1500
  * Bare "ultra" is deliberately not accepted: it is a common word.
  */
 const WAKE =
-  /\b(?:hey|hi|ok|okay|yo)?\s*(?:ultron|ultrawn|ultran|ultrin|altron|oltron|all tron|ultr)\b(?!'s)/i
+  /\b(?:hey|hi|ok|okay|yo|ei|oi|olá)?\s*(?:ultron|ultrom|utron|ultrawn|ultran|ultrin|altron|oltron|all tron|ultr)\b(?!'s)/i
 
 /** Everything after the wake phrase, which is usually the actual command. */
 function afterWake(text: string): string {
@@ -268,7 +268,7 @@ const norm = (s: string) =>
  * would be the single most infuriating failure this file could have.
  */
 const OVERRIDE =
-  /\b(stop|wait|ultron|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no)\b/i
+  /\b(stop|wait|ultron|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no|pare|espera|cancela|chega|silêncio|esquece|cala a boca)\b/i
 
 /**
  * Words too common to be evidence of anything.
@@ -761,7 +761,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     rec = new Ctor()
     rec.continuous = true
     rec.interimResults = true
-    rec.lang = 'en-GB'
+    rec.lang = caps().lang
     rec.onstart = () => {
       running = true
       diag.running = true

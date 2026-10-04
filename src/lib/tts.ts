@@ -7,7 +7,7 @@ import {
   BRIDGE_HTTP_URL,
 } from '../config'
 import * as kokoro from './kokoro'
-import { caps } from './capabilities'
+import { caps, speaksEnglish } from './capabilities'
 
 /**
  * Speech output.
@@ -175,6 +175,7 @@ const VOICE_PREF_KEY = 'ultron.voice'
  */
 function score(v: SpeechSynthesisVoice): number {
   const n = v.name.toLowerCase()
+  if (!speaksEnglish()) return scoreOther(n, v.lang)
   let s = 0
 
   // The macOS British male, and the closest thing to the character available
@@ -204,6 +205,29 @@ function score(v: SpeechSynthesisVoice): number {
   return s
 }
 
+/**
+ * The same ranking for a Portuguese Ultron: a male voice in the right
+ * language, the neural variants first. Windows ships Antonio (neural) and
+ * Daniel; Chrome adds a female Google voice, kept as a last resort so there
+ * is always something that speaks the language.
+ */
+function scoreOther(n: string, lang: string): number {
+  let s = 0
+  if (/\bantonio\b/.test(n)) s += 100
+  else if (/\b(daniel|felipe|donato|fabio|julio|humberto|valerio)\b/.test(n)) s += 85
+  else if (n.includes('google')) s += 45
+  if (/natural|neural|premium|enhanced|online/.test(n)) s += 20
+  if (lang.toLowerCase().replace('_', '-') === caps().lang.toLowerCase()) s += 25
+  if (/\b(maria|francisca|thalita|leila|luciana|joana|catarina|raquel|helena|camila|vitoria)\b/.test(n)) {
+    s -= 60
+  }
+  return s
+}
+
+/** Voices in the language Ultron speaks: pt-BR also accepts pt-PT. */
+const inLanguage = (v: SpeechSynthesisVoice) =>
+  v.lang.toLowerCase().startsWith(caps().lang.slice(0, 2).toLowerCase())
+
 /** Only voices that scored on a name match, not merely on being English —
  *  otherwise the picker cycles through a dozen US novelty voices. */
 const USABLE = 40
@@ -212,7 +236,7 @@ const USABLE = 40
 export function candidateVoices(): SpeechSynthesisVoice[] {
   return speechSynthesis
     .getVoices()
-    .filter((v) => /^en/i.test(v.lang))
+    .filter(inLanguage)
     .map((v) => ({ v, s: score(v) }))
     .filter((x) => x.s >= USABLE)
     .sort((a, b) => b.s - a.s)
@@ -231,12 +255,12 @@ function pickVoice(): SpeechSynthesisVoice | null {
   // if that voice is ever reinstalled.
   const saved = localStorage.getItem(VOICE_PREF_KEY)
   if (saved) {
-    const hit = all.find((v) => v.name === saved)
+    const hit = all.find((v) => v.name === saved && inLanguage(v))
     if (hit) return (cachedVoice = hit)
     localStorage.removeItem(VOICE_PREF_KEY)
   }
 
-  cachedVoice = candidateVoices()[0] ?? all.find((v) => /^en/i.test(v.lang)) ?? null
+  cachedVoice = candidateVoices()[0] ?? all.find(inLanguage) ?? null
   return cachedVoice
 }
 
@@ -245,7 +269,7 @@ function pickVoice(): SpeechSynthesisVoice | null {
  *  quietly replaced. */
 export function currentVoiceName(): string {
   if (USE_ELEVENLABS || caps().tts) return 'ElevenLabs'
-  if (TTS_ENGINE === 'kokoro' && !kokoro.isUnavailable()) {
+  if (TTS_ENGINE === 'kokoro' && speaksEnglish() && !kokoro.isUnavailable()) {
     return KOKORO_VOICE.replace(/^bm_/, '')
   }
   return pickVoice()?.name ?? 'default'
@@ -387,7 +411,7 @@ export function createSpeaker(): Speaker {
       diag.engine = 'elevenlabs'
       return fetchCloudAudio(text).catch(() => null)
     }
-    if (TTS_ENGINE === 'kokoro' && !kokoro.isUnavailable()) {
+    if (TTS_ENGINE === 'kokoro' && speaksEnglish() && !kokoro.isUnavailable()) {
       diag.engine = 'kokoro'
       return kokoro.speak(text).catch(() => null)
     }
@@ -477,7 +501,7 @@ export function createSpeaker(): Speaker {
       const u = new SpeechSynthesisUtterance(text)
       const voice = pickVoice()
       if (voice) u.voice = voice
-      u.lang = voice?.lang ?? 'en-GB'
+      u.lang = voice?.lang ?? caps().lang
       // Deliberate, and deliberately invariant — the character's pace does not
       // change with stakes, and that steadiness is most of the effect. This
       // lands around 130 wpm, below the median for film dialogue.
@@ -766,6 +790,7 @@ async function fetchCloudAudio(text: string): Promise<string | null> {
           body: JSON.stringify({
             text,
             model_id: 'eleven_flash_v2_5',
+            language_code: caps().lang.slice(0, 2).toLowerCase(),
             voice_settings: {
               stability: 0.4,
               similarity_boost: 0.75,
