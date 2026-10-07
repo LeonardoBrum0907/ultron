@@ -10,6 +10,35 @@ let analyser: AnalyserNode | null = null
 let buf: Uint8Array | null = null
 let wave: Float32Array | null = null
 
+const MIC_KEY = 'ultron.mic'
+
+/**
+ * Mic off: he hears nothing, not even his name, and the conversation happens
+ * through the text box. Separate from his voice being off — typing to him and
+ * hearing him answer aloud is a combination worth having. Kept across reloads.
+ */
+let micOn = (() => {
+  try {
+    return localStorage.getItem(MIC_KEY) !== '0'
+  } catch {
+    return true
+  }
+})()
+
+export const isMicOn = () => micOn
+
+export function setMicOn(on: boolean): void {
+  micOn = on
+  // The voice loop is stopped separately; this silences the shared stream so
+  // the analyser and the figure stop reacting to the room as well.
+  stream?.getAudioTracks().forEach((t) => (t.enabled = on))
+  try {
+    localStorage.setItem(MIC_KEY, on ? '1' : '0')
+  } catch {
+    // Private mode: off for this page only.
+  }
+}
+
 export async function getMic(): Promise<MediaStream> {
   if (stream) return stream
   stream = await navigator.mediaDevices.getUserMedia({
@@ -19,6 +48,7 @@ export async function getMic(): Promise<MediaStream> {
       autoGainControl: true,
     },
   })
+  stream.getAudioTracks().forEach((t) => (t.enabled = micOn))
   return stream
 }
 
