@@ -1,6 +1,7 @@
 import { BACKEND } from '../config'
 import * as direct from './anthropic'
 import * as bridge from './bridge'
+import { toneNote } from './tone'
 import type { AskHandlers, Msg } from './anthropic'
 import type { Blade, Panel } from '../store'
 
@@ -23,15 +24,21 @@ export type { ConnectionState } from './bridge'
 export const usingBridge = BACKEND === 'bridge'
 
 /** Conversation state lives in the bridge session, so history is only threaded
- *  through on the direct path. */
+ *  through on the direct path. The mood rides along with the question on both:
+ *  as its own field to the bridge, and in front of this turn's text on the
+ *  direct path, where it stays out of the history kept for later turns. */
 export async function ask(
   prompt: string,
   history: Msg[],
   handlers: AskHandlers,
 ): Promise<{ text: string; tools: string[] }> {
+  const tone = toneNote()
   return usingBridge
-    ? bridge.ask(prompt, handlers)
-    : direct.ask([...history, { role: 'user', content: prompt }], handlers)
+    ? bridge.ask(prompt, handlers, tone)
+    : direct.ask(
+        [...history, { role: 'user', content: tone ? `<mood>${tone}</mood>\n${prompt}` : prompt }],
+        handlers,
+      )
 }
 
 export async function warm(): Promise<void> {

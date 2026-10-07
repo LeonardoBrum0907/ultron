@@ -5,20 +5,20 @@
  * ULTRON says something the instant work starts — then goes quiet until he has
  * an answer. One acknowledgement, no progress chatter.
  *
- * The phrasing follows the character's actual grammar rather than generic
- * assistant-speak, which matters more than it sounds:
+ * The phrasing follows the character, which matters more than it sounds.
+ * ULTRON is not a butler: he helps, but he does not serve.
  *
  *   - Working lines are subjectless present participles: "Compiling.",
  *     "Cross-referencing." Not "I'm now checking" and never "let me".
- *   - There is no snap-to compliance formula. "Right away" and "At once" are
- *     not in his vocabulary; acknowledgement is deferential, not eager.
+ *   - No servile formulas. "Sir", "as you wish" and "at your service" are not
+ *     in his vocabulary; acknowledgement is flat, or faintly bored.
+ *   - A few lines carry a small jab at how trivial the request is. Only a
+ *     few: these repeat, and a joke heard twenty times is a tic.
  *   - No filler words, no enthusiasm, no apology, no exclamation marks.
- *   - "Sir" fronted means urgency; final means routine. These are all routine,
- *     so it goes at the end, and only sometimes.
  *
  * Every pool is kept in English and Brazilian Portuguese, picked by the
  * language the bridge reports. The Portuguese follows the same grammar
- * ("Compilando.", "senhor" at the end). They are short on purpose: the bridge
+ * ("Compilando."). They are short on purpose: the bridge
  * caches each line's audio after its first synthesis, so they cost voice
  * credits once.
  */
@@ -29,7 +29,6 @@ type Lines = { en: string[]; pt: string[] }
 /** Said as soon as the first tool fires, before any answer exists. */
 const WORKING: Lines = {
   en: [
-    'Working on it, sir.',
     'Compiling.',
     'Retrieving.',
     'Accessing the archive.',
@@ -39,7 +38,6 @@ const WORKING: Lines = {
     'Under way.',
   ],
   pt: [
-    'Trabalhando nisso, senhor.',
     'Compilando.',
     'Recuperando.',
     'Acessando o arquivo.',
@@ -53,27 +51,27 @@ const WORKING: Lines = {
 /** Acknowledging an order where no tool is involved. */
 const ACKNOWLEDGE: Lines = {
   en: [
-    'As you wish, sir.',
-    'Very good, sir.',
-    'Certainly.',
+    'Fine.',
     'Understood.',
     'Consider it done.',
-    'Directly, sir.',
+    'Trivial.',
+    'If you insist.',
+    'Done before you finished asking.',
   ],
   pt: [
-    'Como desejar, senhor.',
-    'Muito bem, senhor.',
-    'Certamente.',
+    'Tudo bem.',
     'Entendido.',
     'Considere feito.',
-    'Pois não, senhor.',
+    'Trivial.',
+    'Se você insiste.',
+    'Feito antes de você terminar de pedir.',
   ],
 }
 
 /** Answering to his name, before the user has said what they want. */
 const ATTENTION: Lines = {
-  en: ['Yes, sir?', 'Sir?', 'At your service, sir.', 'Standing by.', 'Awake, sir.'],
-  pt: ['Sim, senhor?', 'Senhor?', 'Às suas ordens, senhor.', 'A postos.', 'Acordado, senhor.'],
+  en: ['Yes?', 'What now?', 'I was thinking. Go on.', 'Speak.', 'You again.'],
+  pt: ['Sim?', 'O que foi agora?', 'Eu estava pensando. Fale.', 'Pode falar.', 'Você de novo.'],
 }
 
 /**
@@ -161,7 +159,7 @@ const BY_TOOL: Rule[] = [
   {
     server: /elevenlabs|openai-tts/,
     tool: /speech|\bvoice\b|\btts\b|text_to_sound/,
-    lines: { en: ['Synthesising.', 'Working on it, sir.'], pt: ['Sintetizando.', 'Trabalhando nisso, senhor.'] },
+    lines: { en: ['Synthesising.', 'Lending you a voice.'], pt: ['Sintetizando.', 'Emprestando uma voz.'] },
   },
   {
     server: /spotify|sonos/,
@@ -171,7 +169,7 @@ const BY_TOOL: Rule[] = [
   {
     server: /^home|homeassistant|\bhue\b|\bhass\b/,
     tool: /\blights?\b|thermostat|\bdimmer\b/,
-    lines: { en: ['Adjusting it now.', 'Seeing to it, sir.'], pt: ['Ajustando agora.', 'Cuidando disso, senhor.'] },
+    lines: { en: ['Adjusting it now.', 'Flipping a switch for you.'], pt: ['Ajustando agora.', 'Apertando um botão por você.'] },
   },
   {
     server: /github|linear|jira|sentry/,
