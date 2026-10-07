@@ -13,8 +13,13 @@
  *   ULTRON_LAYA_TIMEOUT_MS  default 4000 (a CPU answers in about 1.2 s)
  *   ULTRON_LAYA_MIN_CONF    default 0.6, below it the rules win
  *   LAYA_API_KEY            sent as a bearer token when set
+ *   ULTRON_PERCEPTION_LOG   default logs/perception.jsonl, 'off' to keep nothing
+ *
+ * Each utterance is logged with its delivery (prosody) and what was read from
+ * it, on this machine only: the raw material for labelling real speech later.
  */
 
+import { appendFile, mkdir } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 
 const URL_ = (process.env.ULTRON_LAYA_URL ?? 'http://127.0.0.1:8000').replace(/\/+$/, '')
@@ -67,5 +72,34 @@ export async function perceive(text) {
     return fromAnswers((await res.json())?.answers)
   } catch {
     return null
+  }
+}
+
+const LOG = process.env.ULTRON_PERCEPTION_LOG ?? 'logs/perception.jsonl'
+const LOG_URL = LOG === 'off' ? null : new URL(`../${LOG}`, import.meta.url)
+const PROSODY_KEYS = ['durationMs', 'rmsDb', 'peakDb', 'pitchHz', 'pitchRangeSt', 'voicedRatio', 'longestPauseMs', 'wordsPerSec']
+
+/** Only the known numeric fields: this arrives over the socket like anything else. */
+function cleanProsody(p) {
+  if (!p || typeof p !== 'object') return null
+  const out = {}
+  for (const k of PROSODY_KEYS) out[k] = Number.isFinite(p[k]) ? p[k] : null
+  return out
+}
+
+/** One line per utterance. Never throws: a full disk must not break a turn. */
+export async function logPerception(text, prosody, perception) {
+  if (!LOG_URL) return
+  const line = JSON.stringify({
+    at: new Date().toISOString(),
+    transcript: String(text).slice(0, 2000),
+    prosody: cleanProsody(prosody),
+    perception,
+  })
+  try {
+    await mkdir(new URL('.', LOG_URL), { recursive: true })
+    await appendFile(LOG_URL, `${line}\n`, 'utf8')
+  } catch {
+    // nothing to do: the log is a convenience
   }
 }

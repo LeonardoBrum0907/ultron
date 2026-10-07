@@ -12,6 +12,7 @@
 import { perceiveRemote } from './bridge'
 import { mind } from './mind'
 import { log } from './log'
+import type { Prosody } from './prosody'
 
 export type Act =
   | 'praise' | 'provocation' | 'command' | 'question' | 'small_talk'
@@ -79,9 +80,12 @@ export function stimulusFor(p: Perception): string | null {
 /** Even a flat "valeu" counts for something; a shout counts for all of it. */
 export const strengthOf = (p: Perception) => 0.4 + 0.6 * p.intensity
 
-/** Read an utterance and let it move the mood. Fire and forget. */
-export async function perceive(transcript: string): Promise<Perception> {
-  const remote = await perceiveRemote(transcript)
+/**
+ * Read an utterance and let it move the mood. Fire and forget. The prosody, when
+ * it was spoken, only rides along to the bridge's log: Laya v1 reads text.
+ */
+export async function perceive(transcript: string, prosody?: Prosody | null): Promise<Perception> {
+  const remote = await perceiveRemote(transcript, prosody ?? null)
   const p: Perception = remote && isAct(remote.act)
     ? { ...remote, act: remote.act }
     : perceiveByRules(transcript)

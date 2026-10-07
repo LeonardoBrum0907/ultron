@@ -320,7 +320,11 @@ let perceiveSeq = 0
  * when there is no bridge, no Laya, or no answer in time: the caller's rules
  * decide then. Uses the socket only if it is already open; it never dials.
  */
-export function perceiveRemote(text: string, timeoutMs = 5000): Promise<RemotePerception | null> {
+export function perceiveRemote(
+  text: string,
+  prosody: Record<string, number | null> | null = null,
+  timeoutMs = 5000,
+): Promise<RemotePerception | null> {
   const ws = socket
   if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.resolve(null)
   const id = `p${++perceiveSeq}`
@@ -332,7 +336,7 @@ export function perceiveRemote(text: string, timeoutMs = 5000): Promise<RemotePe
     }
     const timer = setTimeout(() => done(null), timeoutMs)
     perceiving.set(id, done)
-    ws.send(JSON.stringify({ type: 'perceive', id, text }))
+    ws.send(JSON.stringify({ type: 'perceive', id, text, prosody }))
   })
 }
 
