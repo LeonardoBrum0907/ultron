@@ -30,7 +30,7 @@ import {
   usingBridge,
   type Msg,
 } from './lib/brain'
-import { startAnalyser, micLevel, micDb } from './lib/audio'
+import { startAnalyser, micLevel, micDb, isMicOn, setMicOn } from './lib/audio'
 import { mind, startMind, isForbidden } from './lib/mind'
 import { probeCapabilities } from './lib/capabilities'
 import { env } from './config'
@@ -78,6 +78,9 @@ export default function App() {
   const history = useRef<Msg[]>([])
   const speaker = useRef<ReturnType<typeof createSpeaker> | null>(null)
   const voice = useRef<Voice | null>(null)
+  /** Bumped on every mic switch, so a voice loop that finishes starting after
+   *  the mic was switched off again stops itself instead of listening. */
+  const micGen = useRef(0)
 
   /**
    * Monotonic turn counter. Every await in a turn checks it on the way out:
@@ -119,6 +122,12 @@ export default function App() {
     clearIdle()
     const s = store.getState()
     s.setCaption('')
+    // Mic off: there is nothing to wait for. The next turn comes from the text
+    // box, which works from dormant, and whatever he is still saying finishes.
+    if (!isMicOn()) {
+      s.setPhase('dormant')
+      return
+    }
     s.setPhase('listening')
     sfx.play('listen')
     idleTimer.current = setTimeout(goDormant, window)
@@ -250,6 +259,7 @@ export default function App() {
 
   /** What the voice loop should do with what it hears, derived from phase. */
   const mode = (): VoiceMode => {
+    if (!isMicOn()) return 'deaf'
     switch (store.getState().phase) {
       case 'offline':
       case 'boot':
@@ -368,6 +378,44 @@ export default function App() {
   const onVoiceError = (message: string) => {
     log('voice', message, 'error')
     store.getState().setError(message)
+  }
+
+  /** Start the voice loop, unless the mic is off. */
+  const startListening = async () => {
+    if (!isMicOn() || voice.current) return
+    const gen = micGen.current
+    const v = await startVoice({
+      mode,
+      onWake,
+      onSpeechStart,
+      onPartial,
+      onUtterance,
+      onError: onVoiceError,
+    })
+    if (gen !== micGen.current || voice.current) v.stop()
+    else voice.current = v
+  }
+
+  /** The mic switch. Off stops the voice loop outright, so the recogniser is
+   *  not merely ignored but closed; on starts a fresh one. */
+  const onMic = (on: boolean) => {
+    micGen.current++
+    setMicOn(on)
+    log('voice', on ? 'microfone ligado' : 'microfone desligado')
+    const phase = store.getState().phase
+    if (phase === 'offline' || phase === 'boot') return // boot starts it
+    if (on) {
+      void startListening()
+      return
+    }
+    voice.current?.stop()
+    voice.current = null
+    store.getState().setCaption('')
+    // Waiting for speech that can no longer arrive.
+    if (phase === 'waking' || phase === 'listening') {
+      clearIdle()
+      store.getState().setPhase('dormant')
+    }
   }
 
   // -- power on -------------------------------------------------------------
@@ -566,15 +614,9 @@ export default function App() {
     // fallback when it is not — no flag, no reload.
     await probeCapabilities()
 
-    // One voice loop, started once, running until the page closes.
-    voice.current = await startVoice({
-      mode,
-      onWake,
-      onSpeechStart,
-      onPartial,
-      onUtterance,
-      onError: onVoiceError,
-    })
+    // One voice loop, running until the page closes or the mic is switched
+    // off. With the mic off he boots straight to the text box.
+    await startListening()
 
     store.getState().setPhase('dormant')
   }
@@ -764,7 +806,11 @@ export default function App() {
     <>
       <Figure hears={hears} says={says} onIgnite={() => void powerOn()} />
       <Hud />
-      <TextBox onSend={onTyped} onMute={(off) => off && speaker.current?.cancel()} />
+      <TextBox
+        onSend={onTyped}
+        onMute={(off) => off && speaker.current?.cancel()}
+        onMic={onMic}
+      />
       <Diagnostics />
       <LogPanel />
     </>
