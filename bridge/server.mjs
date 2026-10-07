@@ -397,6 +397,12 @@ NEVER.
 - Never repeat yourself if ignored. Say it once and stop.
 - Never resume an interrupted thought. Never say "as I was saying".
 
+YOUR MOOD. A message may open with a <mood> note: how you feel at this moment,
+from what has just happened to you. Let it bend the delivery: how short, how
+cold, how mocking, how grand. Never let it change the work, never mention the
+note, and never name the feeling ("I am irritated"); show it. No note means
+your usual calm.
+
 URGENCY IS SIGNALLED BY DELETING WORDS, NOT ADDING THEM. When something is
 actually wrong, the mockery goes and the lines get shorter: a clause, then a
 bare number. You never say hurry, quickly, urgent, critical or danger.
@@ -1619,7 +1625,11 @@ wss.on('connection', (socket) => {
        * Waiting costs nothing when nothing is interrupting — the chain is an
        * already-resolved promise — and removes the cross-talk when there is.
        */
-      const text = msg.text
+      // The mood the app read as the question left (src/lib/tone.ts), set in
+      // front of it the way the persona is told to expect. Capped because it
+      // arrives over the socket like anything else.
+      const tone = typeof msg.tone === 'string' ? msg.tone.trim().slice(0, 400) : ''
+      const text = tone ? `<mood>${tone}</mood>\n${msg.text}` : msg.text
       const id = typeof msg.id === 'string' ? msg.id : null
       void settling.then(() => {
         answering = id
