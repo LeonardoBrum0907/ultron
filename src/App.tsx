@@ -32,6 +32,7 @@ import {
 } from './lib/brain'
 import { startAnalyser, micLevel, micDb, isMicOn, setMicOn } from './lib/audio'
 import { mind, startMind, isForbidden } from './lib/mind'
+import { perceive } from './lib/perception'
 import { probeCapabilities } from './lib/capabilities'
 import { env } from './config'
 
@@ -350,6 +351,7 @@ export default function App() {
     }
     log('voice', `ouvido "${clip(said)}"`)
 
+    void perceive(said)
     void respond(said)
   }
 
@@ -368,6 +370,7 @@ export default function App() {
     if (phase === 'dormant') mind.stimulate('call')
     if (isForbidden(said)) mind.stimulate('forbiddenName')
     onSpeechStart()
+    void perceive(said)
     void respond(said)
   }
 

@@ -38,6 +38,18 @@ export const ultron: Personality = {
     forbiddenName: { effects: { irritation: 0.6, vanity: -0.1 } },
     taskDone: { effects: { vanity: 0.08 } },
     taskFailed: { effects: { irritation: 0.2 } },
+    // What was said to it, as perception read it (Laya, or keyword rules when Laya is out).
+    // 'strength' comes from how intensely it was said. Calling it Jarvis stays forbiddenName;
+    // commands and goodbyes leave the mood alone.
+    heardPraise: { effects: { vanity: 0.1 }, scale: 'strength' },
+    heardProvocation: {
+      effects: { irritation: 0.15, vanity: -0.05 },
+      scale: 'strength',
+      again: { within: 60, effects: { irritation: 0.1 } },
+    },
+    heardThreat: { effects: { irritation: 0.25 }, scale: 'strength' },
+    heardIndifference: { effects: { vanity: -0.08, irritation: 0.03 }, scale: 'strength' },
+    heardChat: { interaction: true, effects: { boredom: -0.05 } },
   },
 
   // The app's phases. Free only while it waits; the mood colours everything else.

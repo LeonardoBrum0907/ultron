@@ -224,5 +224,27 @@ function setup(seed = 1, context = 'dormant') {
   check('and it comes back bored', o.mood.boredom > 0.5, `boredom ${o.mood.boredom.toFixed(2)}`)
 }
 
+// What is said moves the mood: praise feeds vanity, a dig or a threat irritates, and a
+// shout counts for more than a mumble.
+{
+  const mood = (name: string, strength: number) => {
+    const { mind } = setup(3, 'listening')
+    const before = mind.output().mood
+    mind.stimulate(name, { strength })
+    const after = mind.output().mood
+    return { vanity: after.vanity - before.vanity, irritation: after.irritation - before.irritation }
+  }
+  check('praise: vanity up', mood('heardPraise', 1).vanity > 0.05)
+  check('provocation: irritation up, vanity down', mood('heardProvocation', 1).irritation > 0.1 && mood('heardProvocation', 1).vanity < 0)
+  check('threat irritates more than a provocation', mood('heardThreat', 1).irritation > mood('heardProvocation', 1).irritation)
+  check('a shout counts for more', mood('heardProvocation', 1).irritation > mood('heardProvocation', 0.4).irritation)
+  check('indifference: vanity down', mood('heardIndifference', 1).vanity < 0)
+  const { mind } = setup(3, 'listening')
+  mind.stimulate('heardProvocation', { strength: 1 })
+  const once = mind.output().mood.irritation
+  mind.stimulate('heardProvocation', { strength: 1 })
+  check('provoked again within a minute: it builds', mind.output().mood.irritation - once > 0.2)
+}
+
 console.log(failed ? `\n${failed} failed` : '\nall passed')
 process.exit(failed ? 1 : 0)

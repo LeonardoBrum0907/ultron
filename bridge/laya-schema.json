@@ -1,0 +1,47 @@
+{
+  "_source": "LeonardoBrum0907/laya-setup data/schema/ultron_schema.json — copy it again when the schema changes",
+  "version": "ultron-v1",
+  "questions": {
+    "act_type": {
+      "type": "choice",
+      "instructions": "Classify the speech act in the transcript, from the point of view of the assistant being addressed.",
+      "criteria": {
+        "praise": "compliments or admires the assistant",
+        "provocation": "mocks, insults or challenges the assistant",
+        "command": "tells the assistant to do something",
+        "question": "asks the assistant for information",
+        "small_talk": "casual conversation with no request",
+        "indifference": "dismisses or ignores the assistant",
+        "threat": "threatens to harm, shut down or replace the assistant",
+        "forbidden_name": "calls the assistant by a name it rejects, such as Jarvis",
+        "farewell": "says goodbye or ends the interaction"
+      }
+    },
+    "intensity": {
+      "type": "score",
+      "instructions": "How intense is this speech act?",
+      "criteria": [
+        "flat: neutral wording, no emphasis",
+        "mild: some emotion or emphasis",
+        "strong: clearly emotional or emphatic",
+        "extreme: shouting, repeated insults or very strong emotion"
+      ]
+    },
+    "directed_at_ultron": {
+      "type": "noul",
+      "instructions": "Is the transcript addressed to the assistant, rather than to another person or nobody?",
+      "criteria": {
+        "false": "addressed to someone else, or to nobody",
+        "true": "addressed to the assistant"
+      }
+    },
+    "is_sarcastic": {
+      "type": "noul",
+      "instructions": "Is the tone sarcastic, saying the opposite of what is meant?",
+      "criteria": {
+        "false": "sincere",
+        "true": "sarcastic"
+      }
+    }
+  }
+}
