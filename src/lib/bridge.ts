@@ -42,6 +42,18 @@ type Frame = {
   seconds?: number
   when?: string
   servers?: Array<string | { name?: string }>
+  /** perception: Laya's reading of an utterance, null when the rules should decide. */
+  perception?: RemotePerception | null
+}
+
+/** What bridge/laya.mjs sends back. */
+export type RemotePerception = {
+  act: string
+  intensity: number
+  directed: boolean
+  sarcastic: boolean
+  confidence: number
+  source: 'laya'
 }
 
 /** Every question gets an id so its answer can be told from anyone else's. */
@@ -211,6 +223,8 @@ function dispatch(ws: WebSocket) {
           .then(reply)
           .catch((err) => reply({ error: String(err?.message ?? err) }))
       }
+    } else if (msg.type === 'perception' && msg.id) {
+      perceiving.get(msg.id)?.(msg.perception ?? null)
     } else if (msg.type === 'ui' && msg.op) {
       // A `ui` frame with no args is normal — reset and clear take none — so an
       // absent args object is an empty one, not a reason to drop the command.
@@ -295,6 +309,35 @@ function connect(): Promise<WebSocket> {
   })
 
   return connecting
+}
+
+/** Perceptions in flight, by id. */
+const perceiving = new Map<string, (p: RemotePerception | null) => void>()
+let perceiveSeq = 0
+
+/**
+ * Ask the bridge's Laya what an utterance was. Resolves null, never rejects,
+ * when there is no bridge, no Laya, or no answer in time: the caller's rules
+ * decide then. Uses the socket only if it is already open; it never dials.
+ */
+export function perceiveRemote(
+  text: string,
+  prosody: Record<string, number | null> | null = null,
+  timeoutMs = 5000,
+): Promise<RemotePerception | null> {
+  const ws = socket
+  if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.resolve(null)
+  const id = `p${++perceiveSeq}`
+  return new Promise((resolve) => {
+    const done = (p: RemotePerception | null) => {
+      clearTimeout(timer)
+      perceiving.delete(id)
+      resolve(p)
+    }
+    const timer = setTimeout(() => done(null), timeoutMs)
+    perceiving.set(id, done)
+    ws.send(JSON.stringify({ type: 'perceive', id, text, prosody }))
+  })
 }
 
 /** Open the socket early so the first "Hey Ultron" isn't waiting on a handshake. */

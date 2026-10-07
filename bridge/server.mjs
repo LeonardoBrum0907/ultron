@@ -28,6 +28,7 @@ import { createHash } from 'node:crypto'
 import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
+import { logPerception, perceive } from './laya.mjs'
 
 // The same .env.local the Vite app reads, so the ElevenLabs key and the
 // ULTRON_* settings can live in one file instead of the shell. Variables
@@ -1640,6 +1641,17 @@ wss.on('connection', (socket) => {
         } else {
           inbox.push(text)
         }
+      })
+    }
+
+    // What was just said, read by Laya alongside the turn rather than in front
+    // of it: the answer never waits on it. null means 'use your rules'.
+    if (msg.type === 'perceive' && typeof msg.id === 'string' && typeof msg.text === 'string') {
+      const id = msg.id
+      const text = msg.text
+      void perceive(text).then((perception) => {
+        send({ type: 'perception', id, perception })
+        void logPerception(text, msg.prosody, perception)
       })
     }
 

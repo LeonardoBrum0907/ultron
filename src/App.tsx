@@ -32,6 +32,8 @@ import {
 } from './lib/brain'
 import { startAnalyser, micLevel, micDb, isMicOn, setMicOn } from './lib/audio'
 import { mind, startMind, isForbidden } from './lib/mind'
+import { perceive } from './lib/perception'
+import { markSpeechStart, measureUtterance, startProsody } from './lib/prosody'
 import { probeCapabilities } from './lib/capabilities'
 import { env } from './config'
 
@@ -318,6 +320,7 @@ export default function App() {
     const wasBusy =
       phase === 'thinking' || phase === 'tooling' || phase === 'speaking'
 
+    markSpeechStart()
     silence()
     if (wasBusy) {
       // Abandon the answer in flight. The turn counter moves in respond()'s
@@ -350,6 +353,7 @@ export default function App() {
     }
     log('voice', `ouvido "${clip(said)}"`)
 
+    void perceive(said, measureUtterance(said))
     void respond(said)
   }
 
@@ -368,6 +372,7 @@ export default function App() {
     if (phase === 'dormant') mind.stimulate('call')
     if (isForbidden(said)) mind.stimulate('forbiddenName')
     onSpeechStart()
+    void perceive(said)
     void respond(said)
   }
 
@@ -602,6 +607,7 @@ export default function App() {
     // is unavailable" was both alarming and untrue.
     try {
       await startAnalyser()
+      startProsody()
     } catch {
       console.warn(
         '[ultron] no microphone stream — the reactor will not pulse with your ' +

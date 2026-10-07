@@ -63,6 +63,22 @@ export async function startAnalyser(): Promise<void> {
   src.connect(analyser)
   buf = new Uint8Array(analyser.frequencyBinCount)
   wave = new Float32Array(analyser.fftSize)
+  // A second, longer window for the voice's pitch: 512 samples is shorter than one
+  // period of a low voice. Unsmoothed, since prosody.ts reads raw waveform.
+  voice = ctx.createAnalyser()
+  voice.fftSize = 2048
+  src.connect(voice)
+  voiceWave = new Float32Array(voice.fftSize)
+}
+
+let voice: AnalyserNode | null = null
+let voiceWave: Float32Array | null = null
+
+/** The latest ~43 ms of microphone waveform and its sample rate, or null before the analyser is up. */
+export function voiceFrame(): { samples: Float32Array; sampleRate: number } | null {
+  if (!voice || !voiceWave || !ctx) return null
+  voice.getFloatTimeDomainData(voiceWave as Float32Array<ArrayBuffer>)
+  return { samples: voiceWave, sampleRate: ctx.sampleRate }
 }
 
 /** The microphone's loudness in dBFS, or null before the analyser is up. */

@@ -233,6 +233,10 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 | `ULTRON_FILE_ROOTS` | — | Roots the `/file` endpoint may serve from |
 | `ULTRON_VOICE_ID` | — | ElevenLabs voice id |
 | `ELEVENLABS_API_KEY` | — | Optional; enables the ElevenLabs voice + Scribe |
+| `ULTRON_LAYA_URL` | `http://127.0.0.1:8000` | Local Laya that reads each utterance for the mood ([laya-setup](https://github.com/LeonardoBrum0907/laya-setup)); `off` to use keyword rules only |
+| `ULTRON_LAYA_TIMEOUT_MS` | `4000` | How long to wait for Laya before the rules decide |
+| `ULTRON_LAYA_MIN_CONF` | `0.6` | Laya answers less sure than this fall back to the rules |
+| `ULTRON_PERCEPTION_LOG` | `logs/perception.jsonl` | Each utterance with its delivery (loudness, pitch, pauses, rate) and what was read from it, kept on this machine; `off` keeps nothing |
 
 ### Frontend (`.env.local`)
 
