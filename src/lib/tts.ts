@@ -32,7 +32,7 @@ type Speaker = {
   /** Feed streamed text in. Complete sentences are spoken as they appear. */
   push: (delta: string) => void
   /** Speak a phrase ahead of anything still queued. Used for filler like
-   *  "Working on it, sir" while a tool runs. */
+   *  "Compiling." while a tool runs. */
   say: (text: string) => void
   /** No more text coming — flush the remainder and resolve when audio ends. */
   end: () => Promise<void>
