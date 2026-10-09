@@ -108,9 +108,15 @@ WebSocket (plus a few HTTP endpoints) on `ws://localhost:8787`.
 rest. The bridge can. And because it is the Agent SDK, it authenticates off your
 existing Claude Code login: no API key, billed to that same Claude account.
 
-**The model.** `claude-opus-5` at effort `medium` by default. Override with the
-`ULTRON_MODEL` and `ULTRON_EFFORT` environment variables. On startup the bridge
-prints its choice, e.g. `[ultron] model claude-opus-5 · effort medium`.
+**The models.** The voice is `claude-sonnet-5-5` at effort `low`, so a greeting,
+a quick question or a simple command comes back fast. Long or multi-step work
+(several tools, research, browser tasks, files) is handed by Sonnet itself to a
+`heavy` subagent running `claude-opus-5-5` at effort `high`; the HUD shows it as
+`opus · trabalho pesado` and the L panel marks the turn `opus`. Override with
+`ULTRON_MODEL`, `ULTRON_EFFORT`, `ULTRON_HEAVY_MODEL` and `ULTRON_HEAVY_EFFORT`;
+`ULTRON_HEAVY_MODEL=off` keeps everything on the voice model. On startup the
+bridge prints its choice, e.g.
+`[ultron] model claude-sonnet-5-5 · effort low · heavy claude-opus-5-5 · effort high`.
 
 ### The voice pipeline
 
@@ -225,8 +231,10 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 | Variable | Default | Effect |
 |---|---|---|
 | `ULTRON_BRIDGE_PORT` | `8787` | Port for the WebSocket + HTTP endpoints |
-| `ULTRON_MODEL` | `claude-opus-5` | Model to run |
-| `ULTRON_EFFORT` | `medium` | Reasoning effort |
+| `ULTRON_MODEL` | `claude-sonnet-5-5` | The voice: answers every turn |
+| `ULTRON_EFFORT` | `low` | The voice's reasoning effort |
+| `ULTRON_HEAVY_MODEL` | `claude-opus-5-5` | Subagent for long work; `off` removes it |
+| `ULTRON_HEAVY_EFFORT` | `high` | The subagent's reasoning effort |
 | `ULTRON_ALLOW_WRITES` | off | `1` allows effectful tools (see below) |
 | `ULTRON_ALLOWED_ORIGINS` | local dev | Extra WebSocket origins to accept |
 | `ULTRON_ALLOW_NO_ORIGIN` | off | Accept connections with no `Origin` header |
