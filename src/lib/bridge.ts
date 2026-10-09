@@ -25,6 +25,8 @@ type Frame = {
   costUsd?: number | null
   usage?: { in: number; out: number; cacheRead: number; cacheWrite: number } | null
   durationMs?: number | null
+  /** done: whether the turn went to the heavy (Opus) subagent. */
+  escalated?: boolean
   delta?: string
   name?: string
   /** tool_result: whether the tool worked. */
@@ -470,6 +472,7 @@ export async function ask(
                 u && `${compact(u.in)} in / ${compact(u.out)} out`,
                 u && u.cacheRead > 0 && `cache ${compact(u.cacheRead)}`,
                 msg.durationMs != null && `${(msg.durationMs / 1000).toFixed(1)}s`,
+                msg.escalated && 'opus',
               ]
                 .filter(Boolean)
                 .join(' · '),
@@ -534,6 +537,8 @@ export function interrupt(): void {
 
 /** `mcp__higgsfield__generate_image` -> `higgsfield · generate image` */
 function prettyToolName(raw: string): string {
+  // The Agent tool only ever runs the heavy subagent (see bridge/server.mjs).
+  if (raw === 'Agent' || raw === 'Task') return 'opus · trabalho pesado'
   if (!raw.startsWith('mcp__')) return raw
   const [, server, ...rest] = raw.split('__')
   return `${server} · ${rest.join(' ').replace(/_/g, ' ')}`

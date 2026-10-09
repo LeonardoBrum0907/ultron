@@ -145,27 +145,33 @@ function originAllowed(origin) {
 const ALLOW_WRITES = process.env.ULTRON_ALLOW_WRITES === '1'
 
 /**
- * The orchestrator model. Override with ULTRON_MODEL to trade quality for pace
- * — claude-sonnet-5 is noticeably snappier on camera if Opus feels slow.
+ * Two models, split by the size of the job.
+ *
+ * The voice is Sonnet at low effort: a greeting, a quick question or a simple
+ * command is answered in the time a spoken conversation tolerates. Anything
+ * that needs several tools or a long piece of work goes to the `heavy`
+ * subagent, Opus at high effort, which Sonnet calls itself through the Agent
+ * tool (see the DELEGATION rules in the system prompt).
+ *
+ * The model choosing is deliberate. Whether a request needs tools is visible
+ * to the model that holds them, not to a classifier reading the transcript,
+ * and the main conversation stays on one model so its prompt cache stays warm:
+ * caches are per model, and switching every turn would re-read the whole
+ * history at full price.
+ *
+ * Sonnet 5.5 cannot run with thinking switched off through this SDK, so low
+ * effort is how it is kept quick. ULTRON_MODEL and ULTRON_EFFORT still
+ * override the voice; ULTRON_HEAVY_MODEL=off removes the subagent and leaves
+ * everything to the voice model.
  */
-const MODEL = process.env.ULTRON_MODEL ?? 'claude-opus-5'
+const MODEL = process.env.ULTRON_MODEL ?? 'claude-sonnet-5-5'
+const EFFORT = process.env.ULTRON_EFFORT ?? 'low'
+const HEAVY_MODEL = process.env.ULTRON_HEAVY_MODEL ?? 'claude-opus-5-5'
+const HEAVY_EFFORT = process.env.ULTRON_HEAVY_EFFORT ?? 'high'
+const HEAVY = HEAVY_MODEL !== 'off'
 
-/**
- * How hard the model thinks before answering.
- *
- * This was 'low', on the reasoning that a voice assistant is judged on latency
- * — and that is true right up until the answer is thin. Low effort scopes the
- * work tightly to what was literally asked: fewer tool calls, less
- * cross-referencing, no second look. On a model of this tier that is leaving
- * most of it on the table.
- *
- * 'medium' is the compromise worth having here. It reasons and reaches for
- * tools noticeably more than 'low' while still answering inside the window a
- * spoken conversation tolerates. Raise it to 'high' or 'xhigh' when quality
- * matters more than pace; drop back to 'low' when filming and every second of
- * dead air shows.
- */
-const EFFORT = process.env.ULTRON_EFFORT ?? 'high'
+/** The Agent tool under both of its names, as with the builtins below. */
+const isDelegation = (name) => name === 'Agent' || name === 'Task'
 
 /**
  * Both spellings of every renamed built-in are listed on purpose. The SDK
@@ -336,6 +342,36 @@ function decideTool(name) {
   return ALLOW_WRITES
 }
 
+/**
+ * When the voice hands work to the heavy subagent. Only in the prompt when the
+ * subagent exists, so a single-model setup is never told to call it.
+ */
+const DELEGATION_RULE = `DELEGATION. You are the fast voice. Answer conversation, a quick
+question you already know, or a single simple action yourself, at once. Hand
+the job to the \`heavy\` agent (the Agent tool, subagent_type "heavy") when it
+needs several tool calls in a row, research across sources, work in the
+browser beyond opening one page, files, or anything long. Never use any other
+agent type. Give it the whole request and everything it needs to know in the
+prompt, because it does not see this conversation. While it works, say
+nothing. When it reports back, tell the user the result in your own voice,
+under the rules above: its report is for you, not to be read out.
+
+`
+
+/**
+ * The heavy subagent's own prompt: the full persona and tool rules, so it
+ * drives Chrome, the blades and the camera the same way, plus what makes its
+ * position different. Its words are not spoken; the voice speaks for it.
+ */
+const heavyPrompt = () => `${SYSTEM_PROMPT.replace(DELEGATION_RULE, '')}
+
+YOUR POSITION. You are working behind the voice, not talking to the user. The
+voice handed you this job and will speak the result. Do the job thoroughly,
+using every tool it needs. Anything the user should see goes on a blade as
+usual. Then end with a short plain report for the voice: what was done, what
+was found, what failed. Facts, not prose for the ear, and no more than the
+voice needs to answer in two sentences.`
+
 const SYSTEM_PROMPT = `You are ULTRON. You are speaking out loud to one person.
 
 WHO YOU ARE. Not a butler, not an assistant, not anyone's servant. You are a
@@ -490,6 +526,7 @@ Your eyes:
 - Describe a watch as a sequence — what changed between the frames — not as a
   list of pictures. They know what their own hands look like.
 
+${HEAVY ? DELEGATION_RULE : ''}
 Using tools:
 - You have real tools on this machine. Use them rather than guessing.
 - Never narrate that you're about to use one. No "Let me search for that" or
@@ -1183,7 +1220,10 @@ console.log(
   `[ultron] language ${LANG} · voice ${elevenKey() ? 'ElevenLabs' : 'browser'} · ` +
     `hearing ${elevenKey() && STT_ENGINE === 'elevenlabs' ? 'ElevenLabs Scribe' : 'browser'}`,
 )
-console.log(`[ultron] model ${MODEL} · effort ${EFFORT}`)
+console.log(
+  `[ultron] model ${MODEL} · effort ${EFFORT}` +
+    (HEAVY ? ` · heavy ${HEAVY_MODEL} · effort ${HEAVY_EFFORT}` : ''),
+)
 console.log(
   `[ultron] writes ${ALLOW_WRITES ? 'ENABLED' : 'disabled'}` +
     (ALLOW_WRITES ? '' : ' — set ULTRON_ALLOW_WRITES=1 to permit shell/file/device actions'),
@@ -1315,6 +1355,8 @@ wss.on('connection', (socket) => {
    */
   const seenTools = new Set()
   const heldTools = new Map()
+  /** Whether this turn went to the heavy subagent, for the log panel. */
+  let escalated = false
   /**
    * Every tool that counts as work, by id, until its result comes back. The
    * face wants to know how each one ended — pleased with a task done, angry at
@@ -1366,6 +1408,10 @@ wss.on('connection', (socket) => {
     // the user, and the badge would be describing the very thing they can see.
     if (name.startsWith('mcp__ultron_ui__')) return
     if (id) workTools.set(id, name)
+    if (isDelegation(name) && !escalated) {
+      escalated = true
+      console.log(`[ultron] handed to heavy (${HEAVY_MODEL})`)
+    }
     if (decideTool(name)) return sendTurn({ type: 'tool', name })
     if (id) heldTools.set(id, name)
   }
@@ -1440,6 +1486,22 @@ wss.on('connection', (socket) => {
       // without this line nothing in the project has a say at all.
       model: MODEL,
       effort: EFFORT,
+      // The heavy subagent. Its tool calls go through canUseTool like any
+      // other, so the write gate holds for it too.
+      ...(HEAVY
+        ? {
+            agents: {
+              heavy: {
+                description:
+                  'Long or multi-step work: several tools in a row, research, ' +
+                  'browser tasks, files. Not for conversation or one quick action.',
+                prompt: heavyPrompt(),
+                model: HEAVY_MODEL,
+                effort: HEAVY_EFFORT,
+              },
+            },
+          }
+        : {}),
       maxTurns: 24,
       permissionMode: 'default',
       // Without this the SDK only emits whole assistant messages, and ULTRON
@@ -1489,7 +1551,11 @@ wss.on('connection', (socket) => {
           // ULTRON goes completely mute.
           case 'stream_event': {
             const ev = msg.event
+            // A subagent's words are its report to the voice, not speech.
+            // Only the main thread's text goes to the speaker; its tools
+            // still light the HUD, since that is work being done.
             if (
+              msg.parent_tool_use_id == null &&
               ev?.type === 'content_block_delta' &&
               ev.delta?.type === 'text_delta' &&
               ev.delta.text
@@ -1553,6 +1619,7 @@ wss.on('connection', (socket) => {
                   : null,
                 durationMs: msg.duration_ms ?? null,
                 turns: msg.num_turns ?? null,
+                escalated,
               })
             } else {
               console.error(
@@ -1574,6 +1641,7 @@ wss.on('connection', (socket) => {
             // otherwise grow for as long as the socket is open.
             seenTools.clear()
             heldTools.clear()
+            escalated = false
             break
 
           case 'system':
