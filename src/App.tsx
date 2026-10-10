@@ -9,9 +9,7 @@ import { useStore } from './store'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
 import { createSpeaker, cycleVoice, currentVoiceName, diag as ttsDiag } from './lib/tts'
 import * as sfx from './lib/sfx'
-import * as music from './lib/music'
 import * as hands from './lib/hands'
-import { listenForClap } from './lib/clap'
 import * as camera from './lib/camera'
 import * as kokoro from './lib/kokoro'
 import { TTS_ENGINE } from './config'
@@ -74,7 +72,6 @@ const LEADING_NAME = new RegExp(`^${GREETING}?\\s*${NAME}\\b[\\s,.:!?-]*`, 'i')
 
 export default function App() {
   const store = useStore
-  const phase = useStore((s) => s.phase)
   const history = useRef<Msg[]>([])
   const speaker = useRef<ReturnType<typeof createSpeaker> | null>(null)
   const voice = useRef<Voice | null>(null)
@@ -110,9 +107,6 @@ export default function App() {
     turn.current++
     const s = store.getState()
     s.setCaption('')
-    s.setActiveTool(null)
-    music.working(false)
-    music.duck(false)
     sfx.duck(false)
     s.setPhase('dormant')
   }
@@ -152,7 +146,6 @@ export default function App() {
     const spk = createSpeaker()
     speaker.current = spk
     sfx.duck(true)
-    music.duck(true)
 
     const turnId = newId()
     let started = false
@@ -183,10 +176,6 @@ export default function App() {
             started = true
             taskDone()
             store.getState().setPhase('speaking')
-            // The answer arriving is what ends the tool phase — a timer would
-            // clear the readout while a slow tool was still running.
-            store.getState().setActiveTool(null)
-            music.working(false)
             store.getState().pushTurn({ id: turnId, role: 'ultron', text: '' })
           }
           store.getState().appendToLastTurn(delta)
@@ -199,9 +188,7 @@ export default function App() {
           // rest of any answer that called a tool after it started talking,
           // which also broke the reactor's lip-sync for the remainder.
           if (!started) store.getState().setPhase('tooling')
-          store.getState().setActiveTool(name)
           sfx.play('tool')
-          music.working(true)
           // Say something the moment work starts — a tool can take ten seconds
           // and silence that long reads as a crash. Once per turn only; a
           // chain of five tools shouldn't produce five apologies.
@@ -245,9 +232,6 @@ export default function App() {
       if (!stale()) {
         speaker.current = null
         sfx.duck(false)
-        music.duck(false)
-        store.getState().setActiveTool(null)
-        music.working(false)
         // Stay open. Having to say his name again to add one more sentence is
         // the difference between a conversation and a vending machine.
         listen(FOLLOW_UP_MS)
@@ -324,10 +308,7 @@ export default function App() {
       // replacement; bumping it here covers the case where nothing replaces it.
       turn.current++
       interrupt()
-      store.getState().setActiveTool(null)
-      music.working(false)
       sfx.duck(false)
-      music.duck(false)
     }
     store.getState().setPhase('listening')
   }
@@ -455,11 +436,6 @@ export default function App() {
     // AudioContext or speech synthesis without a user gesture.
     await sfx.unlockAudio()
     sfx.play('boot')
-    // The score. Must be started from inside this click handler for the same
-    // reason as the rest of the audio.
-    music.enable()
-    music.playBoot()
-    music.startAmbient()
 
     s.setPhase('boot')
 
@@ -524,22 +500,14 @@ export default function App() {
     })
 
     // The interface is ULTRON's to drive. These arrive out of band, pushed
-    // mid-turn the way panels are, so a command can retint the reactor or put
-    // something into orbit while he is still speaking the sentence about it.
+    // mid-turn the way panels are, so a command can retint the interface while
+    // he is still speaking the sentence about it.
     watchUi((op, args) => {
       const s = store.getState()
       const a = (args ?? {}) as Record<string, never>
       switch (op) {
         case 'patch':
           s.applyUi(args)
-          break
-        case 'orbit':
-          if (a.action === 'add') s.addOrbit(args)
-          else if (a.action === 'remove') s.removeOrbit(String(a.id))
-          else s.clearOrbits()
-          break
-        case 'effect':
-          s.fireEffect(a.kind)
           break
         case 'reset':
           s.resetUi()
@@ -620,37 +588,6 @@ export default function App() {
 
     store.getState().setPhase('dormant')
   }
-
-  // -- clap to start --------------------------------------------------------
-
-  /**
-   * A clap brings him up, as an alternative to the button.
-   *
-   * Only while the ignition screen is showing, and torn down the moment he
-   * boots — the microphone is about to belong to the voice loop, and two
-   * analysers arguing over the same stream is how you get an assistant that
-   * hears half of what you say.
-   *
-   * Deliberately silent about failure. If the microphone is refused, or has not
-   * been granted yet, the button is still right there; announcing an error
-   * about a feature nobody asked for would be worse than quietly doing without.
-   */
-  useEffect(() => {
-    if (phase !== 'offline') return
-    let live: { stop: () => void } | null = null
-    let gone = false
-    void listenForClap(() => {
-      if (!gone) void powerOn()
-    }).then((l) => {
-      if (gone) l.stop()
-      else live = l
-    })
-    return () => {
-      gone = true
-      live?.stop()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase])
 
   // -- level pump + keys ----------------------------------------------------
 

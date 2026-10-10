@@ -64,7 +64,7 @@ export function watchBlades(fn: (blade: Blade) => void): void {
 }
 
 /**
- * Redressing the interface — theme, reactor, orbiting objects, effects — is a
+ * Redressing the interface — its colours and the transcript — is a
  * bridge capability, like panels. The `ui_*` tools live in an in-process MCP
  * server inside the bridge and push straight down the open socket, mid-turn.
  * The direct path has no such channel: the browser talks to the Messages API

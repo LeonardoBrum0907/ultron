@@ -115,7 +115,7 @@ export function watchBlades(fn: (blade: Blade) => void) {
   onBlade = fn
 }
 
-/** Commands that redress the interface — theme, reactor, orbits, effects. Same
+/** Commands that redress the interface — colours and the transcript. Same
  *  out-of-band route as panels: ULTRON issues them while he is still mid-answer
  *  so the change is on screen as he says it, which means they cannot ride back
  *  on the turn's result. The op/args pair stays untyped here on purpose — this
