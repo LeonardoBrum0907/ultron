@@ -61,51 +61,6 @@ body::after {
   font-size: 11px;
 }
 
-.hud-top {
-  position: absolute;
-  top: 44px;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 0 92px;
-}
-
-.brand-mark {
-  display: block;
-  font-size: 19px;
-  font-weight: 600;
-  letter-spacing: 0.42em;
-  text-shadow: 0 0 22px color-mix(in srgb, var(--accent) 70%, transparent);
-}
-
-.status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 10px;
-  /* The header is space-between, so with the wordmark hidden the status line
-     would slide to the left edge on its own. Claiming the free space keeps it
-     pinned right whether or not the brand is there — and with both present it
-     changes nothing, since space-between had already used that space up. */
-  margin-left: auto;
-}
-
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 12px var(--accent);
-  animation: pulse 1.8s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.35; transform: scale(0.75); }
-}
-
 /* Tool badge */
 
 /* The tool readout. This is the moment the interface proves it did something
@@ -921,7 +876,6 @@ kbd {
 }
 
 @media (max-width: 900px) {
-  .hud-top { padding: 0 46px; }
   .log { width: 84vw; }
 }
 

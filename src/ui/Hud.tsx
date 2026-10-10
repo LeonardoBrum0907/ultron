@@ -1,22 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { useStore, accentFor, type Phase } from '../store'
+import { useStore, accentFor } from '../store'
 import { Suggestions } from './Suggestions'
 import { BladeSweep, Blades } from './Blades'
 import { Effects } from './Effects'
 import { Pointer } from './Pointer'
 import { GestureGuide } from './GestureGuide'
-
-const statusText: Record<Phase, string> = {
-  offline: 'OFFLINE',
-  boot: 'INITIALISING',
-  dormant: 'STANDBY — SAY “HEY ULTRON”',
-  waking: 'ONLINE',
-  listening: 'LISTENING',
-  thinking: 'PROCESSING',
-  tooling: 'ACCESSING SYSTEMS',
-  speaking: 'RESPONDING',
-}
 
 /* ------------------------------------------------------------------ decode */
 
@@ -161,7 +150,6 @@ export function Hud() {
   const turns = useStore((s) => s.turns)
   const activeTool = useStore((s) => s.activeTool)
   const error = useStore((s) => s.error)
-  const bootNote = useStore((s) => s.bootNote)
   const gestures = useStore((s) => s.gestures)
   const looking = useStore((s) => s.looking)
   const ui = useStore((s) => s.ui)
@@ -187,25 +175,6 @@ export function Hud() {
           `z-index: auto`, so paint order is document order and the sweep stays
           behind the transcript and the panels without a z-index war. */}
       <BladeSweep />
-
-      <header className="hud-top">
-        {ui.chrome.brand && (
-          <div className="brand">
-            <span className="brand-mark">U.L.T.R.O.N.</span>
-          </div>
-        )}
-
-        <div className="status">
-          <span className="dot" />
-          <span className="status-text">
-            {/* bootNote is the voice-model download readout. It is only ever
-                the right thing to show during boot — as a general fallback a
-                note that never got cleared (a stuck 'voice 97%') sits over
-                LISTENING and PROCESSING for the rest of the session. */}
-            {phase === 'boot' && bootNote ? bootNote : statusText[phase]}
-          </span>
-        </div>
-      </header>
 
       <AnimatePresence>
         {activeTool && ui.chrome.toolBadge && (

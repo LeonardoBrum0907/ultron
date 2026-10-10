@@ -137,7 +137,6 @@ export type UiState = {
     transcript: boolean   // the conversation log
     toolBadge: boolean    // the active-tool readout under the reactor
     suggestions: boolean  // the "try saying…" hint
-    brand: boolean        // the U.L.T.R.O.N. wordmark + status
   }
   effect: UiEffect | null
 }
@@ -146,7 +145,7 @@ export const UI_DEFAULTS: UiState = {
   accent: null, background: null, palette: {},
   reactor: { color: null, scale: 1, intensity: 1, spin: 1, style: 'ring', visible: true },
   orbits: [],
-  chrome: { transcript: true, toolBadge: true, suggestions: true, brand: true },
+  chrome: { transcript: true, toolBadge: true, suggestions: true },
   effect: null,
 }
 

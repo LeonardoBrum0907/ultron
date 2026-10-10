@@ -272,7 +272,6 @@ const chromeSchema = {
   transcript: looseBool('The running conversation log.'),
   tool_badge: looseBool('The active-tool readout under the reactor.'),
   suggestions: looseBool('The "try saying…" hint.'),
-  brand: looseBool('The U.L.T.R.O.N. wordmark and status line.'),
 }
 
 const CHROME_DESCRIPTION = `Show or hide the furniture around the display.
@@ -444,7 +443,6 @@ export function uiServer(emit) {
         // writes the former far more reliably and the store cannot change.
         put(chrome, 'toolBadge', toBool(args.tool_badge))
         put(chrome, 'suggestions', toBool(args.suggestions))
-        put(chrome, 'brand', toBool(args.brand))
 
         if (!has(chrome)) return ok('No change — nothing was named.')
         emit('patch', { chrome })
