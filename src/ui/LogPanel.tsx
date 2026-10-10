@@ -10,7 +10,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { BRIDGE_HTTP_URL } from '../config'
 import { clearLog, compact, useLog } from '../lib/log'
-import { useStore } from '../store'
+import { useStore, type Phase } from '../store'
+
+/** The phase, as the status line on the main screen used to say it. */
+const PHASE: Record<Phase, string> = {
+  offline: 'desligado',
+  boot: 'iniciando',
+  dormant: 'em espera, diga “hey ultron”',
+  waking: 'acordando',
+  listening: 'ouvindo',
+  thinking: 'pensando',
+  tooling: 'acessando sistemas',
+  speaking: 'respondendo',
+}
 
 const OPEN_KEY = 'ultron.log'
 
@@ -31,6 +43,9 @@ export function LogPanel() {
   const stick = useRef(true)
   const [balance, setBalance] = useState<Balance>(null)
   const voice = useStore((s) => s.voice)
+  const phase = useStore((s) => s.phase)
+  const bootNote = useStore((s) => s.bootNote)
+  const connected = useStore((s) => s.connected)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -93,6 +108,16 @@ export function LogPanel() {
         <button type="button" className="lg-clear" onClick={clearLog}>
           limpar
         </button>
+      </div>
+      {/* What used to sit round the edges of the main screen: the phase, the
+          voice download while it boots, and which systems are linked. */}
+      <div className="lg-state">
+        <div>
+          <b>status</b> {phase === 'boot' && bootNote ? bootNote : PHASE[phase]}
+        </div>
+        <div>
+          <b>sistemas</b> {[...connected, 'web'].join(' · ')}
+        </div>
       </div>
       {/* The keys live here rather than on the main screen, which keeps nothing
           but the figure and the conversation. */}

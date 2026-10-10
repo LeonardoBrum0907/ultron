@@ -1876,6 +1876,18 @@ canvas.figure {
   cursor: pointer;
 }
 
+.lg-state {
+  padding: 0.4rem 0.8rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: 0.15rem;
+}
+
+.lg-state b {
+  color: color-mix(in srgb, var(--accent) 80%, white);
+  font-weight: 500;
+}
+
 .lg-keys {
   padding: 0.4rem 0.8rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);

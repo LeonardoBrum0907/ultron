@@ -17,6 +17,17 @@ import { addClaude, clip, compact, log } from './log'
  * invisible: `watchConnection` exists so the HUD can say so.
  */
 
+/** claude-sonnet-5-5 → sonnet-5-5: the log line has little room. */
+const shortModel = (m: string) => m.replace(/^claude-/, '')
+
+/** " · sonnet-5-5 low" for a frame that says which model sent it, else "". */
+const ranOn = (f: { model?: string; effort?: string }) =>
+  f.model ? ` · ${shortModel(f.model)} ${f.effort ?? ''}`.trimEnd() : ''
+
+/** The voice's model and effort, as the last finished turn reported them: a
+ *  question is logged before the bridge has said anything about this one. */
+let voice: { model?: string; effort?: string } = {}
+
 /** Anything the bridge sends. Deliberately loose — a frame from a future
  *  bridge build should be ignored, not crash the turn. */
 type Frame = {
@@ -27,6 +38,11 @@ type Frame = {
   durationMs?: number | null
   /** done: whether the turn went to the heavy (Opus) subagent. */
   escalated?: boolean
+  /** done, error, tool, tool_result: the model and effort that produced it. */
+  model?: string
+  effort?: string
+  /** done: the heavy subagent's model and effort, when the turn went to it. */
+  heavy?: { model: string; effort: string } | null
   delta?: string
   name?: string
   /** tool_result: whether the tool worked. */
@@ -450,19 +466,20 @@ export async function ask(
           case 'tool':
             if (!msg.name) break
             tools.push(msg.name)
-            log('claude', `ferramenta ${prettyToolName(msg.name)}`)
+            log('claude', `ferramenta ${prettyToolName(msg.name)}${ranOn(msg)}`)
             handlers.onTool(prettyToolName(msg.name))
             break
 
           case 'tool_result':
             if (!msg.name) break
             if (msg.ok === false) {
-              log('claude', `ferramenta FALHOU ${prettyToolName(msg.name)}`, 'error')
+              log('claude', `ferramenta FALHOU ${prettyToolName(msg.name)}${ranOn(msg)}`, 'error')
             }
             handlers.onToolResult?.(prettyToolName(msg.name), msg.ok !== false)
             break
 
           case 'done': {
+            if (msg.model) voice = { model: msg.model, effort: msg.effort }
             const u = msg.usage
             addClaude(msg.costUsd, u?.in, u?.out)
             log(
@@ -472,7 +489,10 @@ export async function ask(
                 u && `${compact(u.in)} in / ${compact(u.out)} out`,
                 u && u.cacheRead > 0 && `cache ${compact(u.cacheRead)}`,
                 msg.durationMs != null && `${(msg.durationMs / 1000).toFixed(1)}s`,
-                msg.escalated && 'opus',
+                msg.model && `${shortModel(msg.model)} ${msg.effort ?? ''}`.trim(),
+                msg.heavy
+                  ? `+ ${shortModel(msg.heavy.model)} ${msg.heavy.effort}`
+                  : msg.escalated && 'opus',
               ]
                 .filter(Boolean)
                 .join(' · '),
@@ -482,7 +502,7 @@ export async function ask(
           }
 
           case 'error':
-            log('claude', `erro ${msg.reason ?? ''} ${msg.message ?? ''}`.trim(), 'error')
+            log('claude', `erro ${msg.reason ?? ''} ${msg.message ?? ''}`.trim() + ranOn(msg), 'error')
             fail(new Error(msg.message ?? 'The bridge reported an error.'))
             break
         }
@@ -505,7 +525,7 @@ export async function ask(
     arm()
 
     try {
-      log('claude', `pergunta "${clip(prompt)}"`)
+      log('claude', `pergunta "${clip(prompt)}"${ranOn(voice)}`)
       if (tone) log('claude', `humor: ${tone}`)
       ws.send(JSON.stringify({ type: 'ask', text: prompt, id, tone }))
     } catch (err) {
