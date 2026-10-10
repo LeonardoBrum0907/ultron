@@ -1,21 +1,23 @@
 /**
- * The sound of the dust.
+ * The sound of the dust: a cosmic pad.
  *
- * Synthesised like the cues in sfx.ts: no files, nothing to license. The figure
- * cannot say where its particles are (they move on the GPU), but it knows how
- * much they are moving, and hands that over every frame (see MOTION in
- * proto/figure.js). That drives four sounds:
+ * Synthesised like the cues in sfx.ts, no files, and tonal on purpose: noise
+ * read as wind on a microphone. The figure cannot say where its particles are
+ * (they move on the GPU), but it knows how much they are moving and hands that
+ * over every frame (see MOTION in proto/figure.js). That drives:
  *
- *   breath   the currents assembling him at boot, or taking him apart: a band
- *            of noise that swells and opens while they fly
- *   hiss     the cursor cutting through the dust: thin, bright, only while it
- *            moves
- *   crackle  a part of him crumbling: short dry grains, as fast as it goes
- *   rush     a wave out of his mouth on a stressed syllable, and a part being
- *            rebuilt: a low muffled push
+ *   drone    a low chord (A1, E2, A2, each a pair slightly detuned so it beats
+ *            slowly) that swells with the motion: the currents assembling him
+ *            at boot, the cursor through the dust, a part coming apart or back
+ *   halo     the chord's upper partials, drifting a little in pitch, brought in
+ *            by the assembly and the cursor
+ *   bloom    a sub-bass "vuum" falling away under each stressed syllable
+ *   glide    a slow sine sigh downward as a part crumbles, upward as it is
+ *            rebuilt
  *
- * At rest it is silent. It plays into the cues' master, so it ducks under his
- * voice with them, and has its own level on top (the L panel's slider).
+ * All of it through a long generated reverb. At rest it is silent. It plays
+ * into the cues' master, so it ducks under his voice with them, and has its own
+ * level on top (the L panel's slider).
  */
 import { bus } from './sfx'
 import type { Motion } from '../../proto/figure.js'
@@ -24,50 +26,55 @@ const LEVEL_KEY = 'ultron.dust'
 
 let level = (() => {
   try {
-    const v = Number(localStorage.getItem(LEVEL_KEY))
-    return localStorage.getItem(LEVEL_KEY) == null || !Number.isFinite(v) ? 0.6 : v
+    const raw = localStorage.getItem(LEVEL_KEY)
+    const v = Number(raw)
+    return raw == null || !Number.isFinite(v) ? 0.6 : v
   } catch {
     return 0.6
   }
 })()
 
+const DRONE: [number, number][] = [
+  [55, 0.5],
+  [55.4, 0.4],
+  [82.4, 0.35],
+  [110, 0.25],
+  [110.7, 0.2],
+]
+const HALO: [number, number][] = [
+  [220, 0.12],
+  [329.6, 0.09],
+  [440, 0.06],
+  [659.3, 0.04],
+]
+
 type Graph = {
   ctx: AudioContext
   out: GainNode
-  noise: AudioBuffer
-  breath: { gain: GainNode; band: BiquadFilterNode }
-  hiss: GainNode
-  rush: { gain: GainNode; low: BiquadFilterNode }
+  /** Where every voice goes: dry to the output, and through the reverb. */
+  send: GainNode
+  drone: GainNode
+  halo: GainNode
 }
 
 let graph: Graph | null = null
-let last = 0
 let crumbleWas = 0
-let grainDebt = 0
+let rebuildWas = 0
+let glidedAt = 0
 
-/** Two seconds of pinkish noise, looped by every voice from its own offset. */
-function noiseBuffer(ctx: AudioContext): AudioBuffer {
-  const n = ctx.sampleRate * 2
-  const buf = ctx.createBuffer(1, n, ctx.sampleRate)
-  const d = buf.getChannelData(0)
-  // Paul Kellet's economy pink filter: softer than white, closer to sand.
-  let b0 = 0, b1 = 0, b2 = 0
-  for (let i = 0; i < n; i++) {
-    const w = Math.random() * 2 - 1
-    b0 = 0.99765 * b0 + w * 0.099046
-    b1 = 0.963 * b1 + w * 0.2965164
-    b2 = 0.57 * b2 + w * 1.0526913
-    d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.2
+/** A long dark tail: decaying noise, smoothed, as an impulse response. */
+function hall(ctx: AudioContext, secs = 4.5): AudioBuffer {
+  const n = Math.floor(ctx.sampleRate * secs)
+  const ir = ctx.createBuffer(2, n, ctx.sampleRate)
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch)
+    let s = 0
+    for (let i = 0; i < n; i++) {
+      s = 0.6 * s + 0.4 * (Math.random() * 2 - 1)
+      d[i] = s * Math.exp((-i / ctx.sampleRate) * (6.9 / secs))
+    }
   }
-  return buf
-}
-
-function loop(g: { ctx: AudioContext; noise: AudioBuffer }, into: AudioNode) {
-  const src = g.ctx.createBufferSource()
-  src.buffer = g.noise
-  src.loop = true
-  src.connect(into)
-  src.start(0, Math.random() * 2)
+  return ir
 }
 
 /** Built on first use after audio is unlocked; silent (and cheap) until then. */
@@ -76,37 +83,52 @@ function ensure(): Graph | null {
   const b = bus()
   if (!b) return null
   const { ctx } = b
+
   const out = ctx.createGain()
   out.gain.value = level
   out.connect(b.out)
-  const noise = noiseBuffer(ctx)
+  const send = ctx.createGain()
+  const dry = ctx.createGain()
+  dry.gain.value = 0.55
+  const verb = ctx.createConvolver()
+  verb.buffer = hall(ctx)
+  const wet = ctx.createGain()
+  wet.gain.value = 0.6
+  send.connect(dry).connect(out)
+  send.connect(verb).connect(wet).connect(out)
 
-  const bg = ctx.createGain()
-  bg.gain.value = 0
-  const band = ctx.createBiquadFilter()
-  band.type = 'bandpass'
-  band.frequency.value = 600
-  band.Q.value = 0.8
-  band.connect(bg).connect(out)
+  const drone = ctx.createGain()
+  drone.gain.value = 0
+  drone.connect(send)
+  for (const [f, a] of DRONE) {
+    const o = ctx.createOscillator()
+    o.frequency.value = f
+    const g = ctx.createGain()
+    g.gain.value = a * 0.3
+    o.connect(g).connect(drone)
+    o.start()
+  }
 
-  const hiss = ctx.createGain()
-  hiss.gain.value = 0
-  const high = ctx.createBiquadFilter()
-  high.type = 'highpass'
-  high.frequency.value = 3800
-  high.connect(hiss).connect(out)
+  const halo = ctx.createGain()
+  halo.gain.value = 0
+  halo.connect(send)
+  // One slow wobble shared by the partials, so they drift together.
+  const lfo = ctx.createOscillator()
+  lfo.frequency.value = 0.13
+  lfo.start()
+  for (const [f, a] of HALO) {
+    const o = ctx.createOscillator()
+    o.frequency.value = f
+    const depth = ctx.createGain()
+    depth.gain.value = f * 0.003
+    lfo.connect(depth).connect(o.frequency)
+    const g = ctx.createGain()
+    g.gain.value = a * 0.3
+    o.connect(g).connect(halo)
+    o.start()
+  }
 
-  const rg = ctx.createGain()
-  rg.gain.value = 0
-  const low = ctx.createBiquadFilter()
-  low.type = 'lowpass'
-  low.frequency.value = 420
-  low.connect(rg).connect(out)
-
-  graph = { ctx, out, noise, breath: { gain: bg, band }, hiss, rush: { gain: rg, low } }
-  loop(graph, band)
-  loop(graph, high)
-  loop(graph, low)
+  graph = { ctx, out, send, drone, halo }
   return graph
 }
 
@@ -116,70 +138,64 @@ function glide(p: AudioParam, to: number, tc: number) {
   p.setTargetAtTime(to, graph.ctx.currentTime, tc)
 }
 
-/** One dry grain of a crumble: a few ms of bright noise. */
-function grain(g: Graph, at: number, amp: number) {
-  const src = g.ctx.createBufferSource()
-  src.buffer = g.noise
+/** A slow sine sigh from one pitch to another. */
+function sigh(g: Graph, from: number, to: number, secs: number, amp: number) {
+  const at = g.ctx.currentTime
+  const o = g.ctx.createOscillator()
+  o.frequency.setValueAtTime(from, at)
+  o.frequency.exponentialRampToValueAtTime(to, at + secs)
   const env = g.ctx.createGain()
-  const hp = g.ctx.createBiquadFilter()
-  hp.type = 'highpass'
-  hp.frequency.value = 1800 + Math.random() * 3500
-  env.gain.setValueAtTime(0, at)
-  env.gain.linearRampToValueAtTime(amp, at + 0.002)
-  env.gain.exponentialRampToValueAtTime(0.0001, at + 0.012 + Math.random() * 0.03)
-  src.connect(hp).connect(env).connect(g.out)
-  src.start(at, Math.random() * 1.9, 0.06)
+  env.gain.setValueAtTime(0.0001, at)
+  env.gain.exponentialRampToValueAtTime(amp, at + secs * 0.3)
+  env.gain.exponentialRampToValueAtTime(0.0001, at + secs * 1.2)
+  o.connect(env).connect(g.send)
+  o.start(at)
+  o.stop(at + secs * 1.25)
 }
 
 /** Every frame, from the figure. */
 export function onMotion(m: Motion) {
   const g = ensure()
   if (!g) return
-  const now = performance.now() / 1000
-  const dt = last ? Math.min(0.1, now - last) : 0
-  last = now
 
-  // breath: the assembly, and a part lifting off to be rebuilt (quieter)
-  const breath = Math.max(m.assembly, 0.45 * m.rebuild)
-  glide(g.breath.gain.gain, 0.5 * breath, 0.15)
-  glide(g.breath.band.frequency, 450 + 1700 * breath, 0.25)
+  // Quick to come in, slow to let go, so a flick of the cursor still blooms and then rings out.
+  const swell = Math.max(m.assembly, 0.9 * m.cursor, 0.5 * m.crumble, 0.5 * m.rebuild)
+  const halo = Math.max(m.assembly, 0.9 * m.cursor)
+  glide(g.drone.gain, swell, swell > g.drone.gain.value ? 0.12 : 0.6)
+  glide(g.halo.gain, halo, halo > g.halo.gain.value ? 0.12 : 0.7)
 
-  // hiss: the cursor, only while it moves
-  glide(g.hiss.gain, 0.22 * Math.pow(m.cursor, 1.5), 0.05)
-
-  // rush: a part settling back as the rebuild lets go
-  glide(g.rush.gain.gain, 0.35 * m.rebuild, 0.3)
-
-  // crackle: as many grains as the crumble is moving, a few more while it builds, and a
-  // sparse sparkle while the currents fly
-  const growing = Math.max(0, m.crumble - crumbleWas) / Math.max(dt, 1e-3)
-  crumbleWas = m.crumble
-  const rate = 260 * Math.min(1, growing) + 30 * m.crumble + 18 * m.assembly
-  grainDebt += rate * dt
-  const t0 = g.ctx.currentTime
-  for (let i = 0; grainDebt >= 1 && i < 12; i++, grainDebt--) {
-    grain(g, t0 + Math.random() * dt, 0.05 + 0.12 * Math.random())
+  // A part starting to come apart sighs down; one starting to come back sighs up. Once per
+  // gesture, not every frame it grows.
+  const now = g.ctx.currentTime
+  if (m.crumble > 0.05 && crumbleWas <= 0.05 && now - glidedAt > 0.5) {
+    glidedAt = now
+    sigh(g, 330, 82, 1.4, 0.12)
+    sigh(g, 220, 55, 1.6, 0.1)
   }
-  grainDebt = Math.min(grainDebt, 4)
+  if (m.rebuild > 0.05 && rebuildWas <= 0.05 && now - glidedAt > 0.5) {
+    glidedAt = now
+    sigh(g, 82, 330, 1.4, 0.1)
+    sigh(g, 55, 220, 1.6, 0.08)
+  }
+  crumbleWas = m.crumble
+  rebuildWas = m.rebuild
 }
 
-/** A stressed syllable's wave out of the mouth: a low "fff" under the word. */
+/** A stressed syllable's wave out of the mouth: a sub-bass bloom under the word. */
 export function onWave(strength: number) {
   const g = graph
   if (!g) return
   const at = g.ctx.currentTime
-  const src = g.ctx.createBufferSource()
-  src.buffer = g.noise
-  const lp = g.ctx.createBiquadFilter()
-  lp.type = 'lowpass'
-  lp.frequency.setValueAtTime(900, at)
-  lp.frequency.exponentialRampToValueAtTime(220, at + 0.6)
+  const o = g.ctx.createOscillator()
+  o.frequency.setValueAtTime(70, at)
+  o.frequency.exponentialRampToValueAtTime(28, at + 1.2)
   const env = g.ctx.createGain()
-  env.gain.setValueAtTime(0, at)
-  env.gain.linearRampToValueAtTime(0.18 * strength, at + 0.03)
-  env.gain.exponentialRampToValueAtTime(0.0001, at + 0.7)
-  src.connect(lp).connect(env).connect(g.out)
-  src.start(at, Math.random() * 1.2, 0.75)
+  env.gain.setValueAtTime(0.0001, at)
+  env.gain.exponentialRampToValueAtTime(0.35 * strength + 0.0001, at + 0.04)
+  env.gain.exponentialRampToValueAtTime(0.0001, at + 1.0)
+  o.connect(env).connect(g.send)
+  o.start(at)
+  o.stop(at + 1.05)
 }
 
 export function dustLevel(): number {
