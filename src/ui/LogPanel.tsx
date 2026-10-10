@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { BRIDGE_HTTP_URL } from '../config'
 import { clearLog, compact, useLog } from '../lib/log'
+import { useStore } from '../store'
 
 const OPEN_KEY = 'ultron.log'
 
@@ -29,6 +30,7 @@ export function LogPanel() {
   const list = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const [balance, setBalance] = useState<Balance>(null)
+  const voice = useStore((s) => s.voice)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -91,6 +93,17 @@ export function LogPanel() {
         <button type="button" className="lg-clear" onClick={clearLog}>
           limpar
         </button>
+      </div>
+      {/* The keys live here rather than on the main screen, which keeps nothing
+          but the figure and the conversation. */}
+      <div className="lg-keys">
+        diga <b>“hey ultron”</b> · <kbd>Space</kbd> falar · <kbd>G</kbd> mãos · <kbd>D</kbd> diagnóstico
+        {voice && (
+          <>
+            {' · '}
+            <kbd>V</kbd> voz: {voice.replace(/\(.*?\)/g, '').trim()}
+          </>
+        )}
       </div>
       <div className="lg-totals">
         <div>

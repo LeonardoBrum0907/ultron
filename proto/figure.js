@@ -25,8 +25,9 @@ import { createHearing } from './hearing.js'
  * @param {() => ({ db: number } | { level: number } | null)} [opts.says] its own voice while
  *   speaking; null falls back to the made-up voice
  * @param {() => void} [opts.onIgnite] a click on the dust while offline (else it boots itself)
+ * @param {() => (object | null)[]} [opts.zones] where the HUD is on screen this frame (see HUD_ZONES)
  */
-export async function createFigure({ canvas, mind, controls = false, tickMind = controls, hears, says, onIgnite }) {
+export async function createFigure({ canvas, mind, controls = false, tickMind = controls, hears, says, onIgnite, zones }) {
   // The prototype page's own elements; hosted, a detached stand-in takes every write.
   const stand = {}
   const $ = (id) => (controls && document.getElementById(id)) || (stand[id] ??= document.createElement('div'))
@@ -270,6 +271,8 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
     uniform vec2  uWedge;     // middle of the loose cloud, image px (the wedges are cut around it)
     uniform vec4  uCurM[5];   // per current: the 2x2 turn that takes its wedge from where it was baked to where it sits this boot
     uniform vec2  uFlowOff;   // where in the swirling field this boot reads its turbulence
+    uniform vec4  uZone[2];   // the HUD on screen: x0 y0 x1 y1, CSS px from the window's centre, y up (see HUD_ZONES)
+    uniform vec2  uZoneFx[2]; // each zone: x calm (the text over it must read), y rim (the dust traces its border) 0..1
 
     varying vec3 vColor;
     varying float vAlpha;
@@ -761,6 +764,46 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
       w.y = -w.y;
       w += uOffset;
       w.x += uParallax * (0.4 + aSeed * 0.6);
+
+      // THE HUD, in screen space so every layer agrees on where it is. Calm: the loose dust
+      // drifts out of the zone and fades, and the figure behind it dims, so the text over it
+      // reads. Rim: the loose dust near its border is drawn onto it, a thin band of motes.
+      float zoneLight = 1.0;
+      for (int i = 0; i < 2; i++) {
+        vec2 fx = uZoneFx[i];
+        if (fx.x + fx.y > 0.001) {
+          vec4 z = uZone[i];
+          vec2 c = (z.xy + z.zw) * 0.5;
+          vec2 h = (z.zw - z.xy) * 0.5;
+          vec2 q = w - c;
+          vec2 d = abs(q) - h;
+          float sd = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); // < 0 inside
+          bool beyond = max(d.x, d.y) > 0.0;
+          vec2 edge = beyond ? clamp(q, -h, h) : (d.x > d.y ? vec2(sign(q.x) * h.x, q.y) : vec2(q.x, sign(q.y) * h.y));
+          vec2 nrm = beyond ? normalize(q - edge + vec2(0.0, 0.0001)) : (d.x > d.y ? vec2(sign(q.x), 0.0) : vec2(0.0, sign(q.y)));
+          float inside = 1.0 - smoothstep(-28.0, 10.0, sd);
+          if (uPushOn > 0.5) {
+            w += nrm * fx.x * inside * 18.0 * e;
+            zoneLight *= 1.0 - 0.85 * fx.x * inside;
+            // Each mote the rim takes has its own place round the border (by its seed), so the
+            // dust that streams in from either side spreads into an even outline.
+            float pull = fx.y * (1.0 - smoothstep(280.0, 340.0, abs(sd))) * e;
+            float per = 4.0 * (h.x + h.y);
+            float at = fract(aSeed * 7.13) * per;
+            vec2 rim;
+            if (at < 2.0 * h.x) rim = vec2(at - h.x, h.y);
+            else if (at < 2.0 * h.x + 2.0 * h.y) rim = vec2(h.x, h.y - (at - 2.0 * h.x));
+            else if (at < 4.0 * h.x + 2.0 * h.y) rim = vec2(h.x - (at - 2.0 * h.x - 2.0 * h.y), -h.y);
+            else rim = vec2(-h.x, -h.y + (at - 4.0 * h.x - 2.0 * h.y));
+            vec2 rimN = abs(rim.x) >= h.x - 0.01 ? vec2(sign(rim.x), 0.0) : vec2(0.0, sign(rim.y));
+            vec2 onRim = c + rim + rimN * (fract(aSeed * 13.7) - 0.35) * 6.0;
+            w = mix(w, onRim, pull);
+            zoneLight *= 1.0 + 0.8 * pull;
+          } else {
+            zoneLight *= 1.0 - 0.5 * fx.x * inside;
+          }
+        }
+      }
       gl_Position = vec4(w.x / (uView.x * 0.5), w.y / (uView.y * 0.5), 0.0, 1.0);
 
       // Cyan gives way under the orange; orange swells with the voice.
@@ -774,7 +817,7 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
       // Loose motes differ: a few bright, most dim, all twinkling slowly. That
       // fades out as each one becomes part of the figure.
       float mote = (0.25 + 1.5 * pow(fract(aSeed * 9.13), 3.0)) * (0.8 + 0.2 * sin(uFreeTime * (0.2 + aSeed * 0.5) + ph));
-      vAlpha = shown * mix(1.0, mote, looseness) * dim * wave * boost * flight * uLife * headLight * bodyLight * attnLight * clickLight * behind * artLight * gestureLight * discLight * eyeLight * slitLight * cheekLight * (1.0 + 0.6 * uStir + 0.35 * pushed);
+      vAlpha = shown * mix(1.0, mote, looseness) * dim * wave * boost * flight * uLife * headLight * bodyLight * attnLight * clickLight * behind * artLight * gestureLight * discLight * eyeLight * slitLight * cheekLight * zoneLight * (1.0 + 0.6 * uStir + 0.35 * pushed);
       // Palette swap: cyan (and its white highlights) becomes red, red stays red.
       float m = max(max(aColor.r, aColor.g), aColor.b);
       float whiteness = min(min(aColor.r, aColor.g), aColor.b) / max(m, 0.001);
@@ -866,6 +909,12 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
   const wedgeM = { value: Array.from({ length: K }, () => new THREE.Vector4(1, 0, 0, 1)) }
   const wedgeAt = { value: new THREE.Vector2() }
   const flowOff = { value: new THREE.Vector2() }
+  // HUD_ZONES: the parts of the HUD the figure answers to, shared by every layer. The host
+  // says each frame where they are and what each wants (zones()); the strengths ease here,
+  // so a zone fades in and out instead of switching.
+  const ZONES = 2
+  const zoneU = { value: Array.from({ length: ZONES }, () => new THREE.Vector4()) }
+  const zoneFxU = { value: Array.from({ length: ZONES }, () => new THREE.Vector2()) }
   const curA = { value: Array.from({ length: K }, () => new THREE.Vector4()) }
   const curB = { value: Array.from({ length: K }, () => new THREE.Vector4()) }
   const curSrc = [] // where each gathers
@@ -1142,6 +1191,8 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
     uWedge: wedgeAt,
     uCurM: wedgeM,
     uFlowOff: flowOff,
+    uZone: zoneU,
+    uZoneFx: zoneFxU,
   })
 
   /* -------------------------------------------------------------- particles */
@@ -2738,6 +2789,17 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
       rebuild.turn = ((6 + Math.random() * 9) * Math.PI) / 180 * (Math.random() < 0.5 ? -1 : 1)
     }
     rebuild.amount = rebuildAmt
+
+    // The HUD (see HUD_ZONES): a zone the host no longer names keeps its last place and fades.
+    const hud = zones?.() ?? []
+    for (let i = 0; i < ZONES; i++) {
+      const zn = hud[i]
+      const fx = zoneFxU.value[i]
+      if (zn) zoneU.value[i].set(zn.left - vw / 2, vh / 2 - zn.bottom, zn.right - vw / 2, vh / 2 - zn.top)
+      fx.x += ((zn?.calm ?? 0) - fx.x) * k(5)
+      fx.y += ((zn?.rim ?? 0) - fx.y) * k(4)
+      if (fx.x + fx.y < 0.002) fx.set(0, 0)
+    }
 
     for (const l of layers) {
       const u = l.uniforms

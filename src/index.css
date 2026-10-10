@@ -61,18 +61,6 @@ body::after {
   font-size: 11px;
 }
 
-.corner {
-  position: absolute;
-  width: 46px;
-  height: 46px;
-  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  opacity: 0.8;
-}
-.corner-tl { top: 26px; left: 26px; border-right: 0; border-bottom: 0; }
-.corner-tr { top: 26px; right: 26px; border-left: 0; border-bottom: 0; }
-.corner-bl { bottom: 26px; left: 26px; border-right: 0; border-top: 0; }
-.corner-br { bottom: 26px; right: 26px; border-left: 0; border-top: 0; }
-
 .hud-top {
   position: absolute;
   top: 44px;
@@ -90,14 +78,6 @@ body::after {
   font-weight: 600;
   letter-spacing: 0.42em;
   text-shadow: 0 0 22px color-mix(in srgb, var(--accent) 70%, transparent);
-}
-
-.brand-sub {
-  display: block;
-  margin-top: 5px;
-  font-size: 9px;
-  letter-spacing: 0.22em;
-  opacity: 0.42;
 }
 
 .status {
@@ -124,60 +104,6 @@ body::after {
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.35; transform: scale(0.75); }
-}
-
-/* Side rails */
-
-.rail {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  font-size: 10px;
-}
-.rail-left { left: 92px; }
-.rail-right { right: 92px; align-items: flex-end; }
-
-.rail-title {
-  font-size: 8px;
-  opacity: 0.4;
-  letter-spacing: 0.34em;
-  margin-bottom: 4px;
-}
-
-.rail-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  opacity: 0.82;
-}
-.rail-item.dim { opacity: 0.3; }
-.rail-item.mono { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.1em; }
-
-.tick {
-  width: 5px;
-  height: 5px;
-  background: var(--accent);
-  transform: rotate(45deg);
-  box-shadow: 0 0 8px var(--accent);
-}
-
-.meter {
-  width: 3px;
-  height: 96px;
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  display: flex;
-  align-items: flex-end;
-  margin: 4px 0;
-}
-
-.meter-fill {
-  width: 100%;
-  background: var(--accent);
-  box-shadow: 0 0 12px var(--accent);
-  transition: height 90ms linear;
 }
 
 /* Tool badge */
@@ -259,10 +185,10 @@ body::after {
   left: 50%;
   bottom: 132px;
   transform: translateX(-50%);
-  width: min(760px, 68vw);
+  width: min(620px, 60vw);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   text-transform: none;
   letter-spacing: 0.01em;
 }
@@ -271,7 +197,7 @@ body::after {
   display: flex;
   gap: 14px;
   align-items: baseline;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -284,7 +210,7 @@ body::after {
   padding-top: 3px;
 }
 
-.log-user .log-text { opacity: 0.52; }
+.log-user .log-text { opacity: 0.45; }
 .log-ultron .log-text {
   color: #eaf9ff;
   text-shadow: 0 0 26px color-mix(in srgb, var(--accent) 45%, transparent);
@@ -317,17 +243,6 @@ body::after {
   letter-spacing: 0.04em;
   max-width: 70vw;
   text-align: center;
-}
-
-.hud-bottom {
-  position: absolute;
-  bottom: 12px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  font-size: 9px;
-  opacity: 0.38;
-  letter-spacing: 0.2em;
 }
 
 kbd {
@@ -1007,8 +922,6 @@ kbd {
 
 @media (max-width: 900px) {
   .hud-top { padding: 0 46px; }
-  .rail-left { left: 30px; }
-  .rail-right { right: 30px; }
   .log { width: 84vw; }
 }
 
@@ -1925,17 +1838,20 @@ canvas.figure {
   flex: 1;
   min-width: 0;
   padding: 9px 12px;
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
-  border-radius: 6px;
+  /* Just a hairline underneath: when it has the focus the dust traces its
+     border instead (hudZones in Figure.tsx). */
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 0;
   outline: none;
-  background: rgba(1, 6, 12, 0.6);
+  background: transparent;
   color: #eaf9ff;
   font: inherit;
   letter-spacing: 0.02em;
 }
 
 .textbox input:focus {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  border-color: transparent;
 }
 
 .textbox input::placeholder {
@@ -1948,10 +1864,9 @@ canvas.figure {
 
 .textbox-mute {
   flex: 0 0 auto;
-  padding: 0 12px;
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
-  border-radius: 6px;
-  background: rgba(1, 6, 12, 0.6);
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
   color: color-mix(in srgb, var(--accent) 70%, transparent);
   font: inherit;
   font-size: 10px;
@@ -1962,7 +1877,6 @@ canvas.figure {
 
 .textbox-mute.on {
   color: #eaf9ff;
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 /* The L panel: one line per integration event */
@@ -2006,6 +1920,12 @@ canvas.figure {
   letter-spacing: 0.1em;
   padding: 0 0.5rem;
   cursor: pointer;
+}
+
+.lg-keys {
+  padding: 0.4rem 0.8rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 0.7;
 }
 
 .lg-totals {

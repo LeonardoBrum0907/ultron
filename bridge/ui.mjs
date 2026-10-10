@@ -269,7 +269,6 @@ Rules that matter:
     feel it; put it in a panel when they need to look at it.`
 
 const chromeSchema = {
-  systems: looseBool('The SYSTEMS rail down the left — connected servers and status.'),
   transcript: looseBool('The running conversation log.'),
   tool_badge: looseBool('The active-tool readout under the reactor.'),
   suggestions: looseBool('The "try saying…" hint.'),
@@ -278,8 +277,8 @@ const chromeSchema = {
 
 const CHROME_DESCRIPTION = `Show or hide the furniture around the display.
 
-Everything is up by default and that is the right default — the rails are how
-the user knows what you are connected to and what you just did.
+Everything is up by default and that is the right default — the transcript and
+the tool readout are how the user knows what you said and what you just did.
 
 Hide it only when the absence helps. A photograph they are studying, a single
 number they need to hold in their head, a moment you want to land. Strip the
@@ -440,7 +439,6 @@ export function uiServer(emit) {
 
       tool('ui_chrome', CHROME_DESCRIPTION, chromeSchema, async (args) => {
         const chrome = {}
-        put(chrome, 'systems', toBool(args.systems))
         put(chrome, 'transcript', toBool(args.transcript))
         // Snake case at the tool boundary, camel case in the store — the model
         // writes the former far more reliably and the store cannot change.

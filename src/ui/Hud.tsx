@@ -18,10 +18,6 @@ const statusText: Record<Phase, string> = {
   speaking: 'RESPONDING',
 }
 
-function Corner({ at }: { at: 'tl' | 'tr' | 'bl' | 'br' }) {
-  return <div className={`corner corner-${at}`} />
-}
-
 /* ------------------------------------------------------------------ decode */
 
 /**
@@ -144,19 +140,17 @@ function DecodeText({ text }: { text: string }) {
   )
 }
 
-/*
- * The only things on screen that follow the mic level, which changes sixty
- * times a second. They subscribe on their own so the rest of the HUD does not
- * reconcile every frame for a number it never reads.
+/**
+ * What the transcript shows: his last line, and nothing older. The user's own
+ * line is there only while it waits for his answer, so they can see it was
+ * heard; once he speaks it goes.
  */
-function MeterFill() {
-  const level = useStore((s) => s.level)
-  return <div className="meter-fill" style={{ height: `${level * 100}%` }} />
-}
-
-function MeterValue() {
-  const pct = useStore((s) => Math.round(s.level * 100))
-  return <div className="rail-item mono">{String(pct).padStart(3, '0')}%</div>
+function onScreen<T extends { role: string }>(turns: T[]): T[] {
+  const last = turns[turns.length - 1]
+  if (!last) return []
+  if (last.role === 'ultron') return [last]
+  const his = turns.findLast((t) => t.role === 'ultron')
+  return his ? [his, last] : [last]
 }
 
 /* --------------------------------------------------------------------- hud */
@@ -166,9 +160,7 @@ export function Hud() {
   const caption = useStore((s) => s.caption)
   const turns = useStore((s) => s.turns)
   const activeTool = useStore((s) => s.activeTool)
-  const connected = useStore((s) => s.connected)
   const error = useStore((s) => s.error)
-  const voice = useStore((s) => s.voice)
   const bootNote = useStore((s) => s.bootNote)
   const gestures = useStore((s) => s.gestures)
   const looking = useStore((s) => s.looking)
@@ -196,16 +188,10 @@ export function Hud() {
           behind the transcript and the panels without a z-index war. */}
       <BladeSweep />
 
-      <Corner at="tl" />
-      <Corner at="tr" />
-      <Corner at="bl" />
-      <Corner at="br" />
-
       <header className="hud-top">
         {ui.chrome.brand && (
           <div className="brand">
             <span className="brand-mark">U.L.T.R.O.N.</span>
-            <span className="brand-sub">Just A Rather Very Intelligent System</span>
           </div>
         )}
 
@@ -220,33 +206,6 @@ export function Hud() {
           </span>
         </div>
       </header>
-
-      {/* Left rail: which integrations are live */}
-      {ui.chrome.systems && (
-        <aside className="rail rail-left">
-          <div className="rail-title">SYSTEMS</div>
-          {connected.length === 0 && <div className="rail-item dim">none linked</div>}
-          {connected.map((c) => (
-            <div key={c} className="rail-item">
-              <span className="tick" />
-              {c}
-            </div>
-          ))}
-          <div className="rail-item">
-            <span className="tick" />
-            Web
-          </div>
-        </aside>
-      )}
-
-      {/* Right rail: live telemetry, mostly for flavour */}
-      <aside className="rail rail-right">
-        <div className="rail-title">SIGNAL</div>
-        <div className="meter">
-          <MeterFill />
-        </div>
-        <MeterValue />
-      </aside>
 
       <AnimatePresence>
         {activeTool && ui.chrome.toolBadge && (
@@ -274,11 +233,12 @@ export function Hud() {
         )}
       </AnimatePresence>
 
-      {/* Conversation log — last few turns, fading upward */}
+      {/* Conversation log: his last line (and the user's, while it waits). The
+          dust clears behind it, see hudZones in Figure.tsx. */}
       {ui.chrome.transcript && (
         <div className="log">
           <AnimatePresence initial={false}>
-            {turns.slice(-4).map((t) => (
+            {onScreen(turns).map((t) => (
               <motion.div
                 key={t.id}
                 className={`log-line log-${t.role}`}
@@ -323,18 +283,6 @@ export function Hud() {
       {ui.chrome.suggestions && <Suggestions />}
 
       {error && <div className="error">{error}</div>}
-
-      <footer className="hud-bottom">
-        <span className="hint">
-          say <b>“hey ultron”</b> · <kbd>Space</kbd> to talk · <kbd>G</kbd> hands · <kbd>L</kbd> log
-          {voice && (
-            <>
-              {' · '}
-              <kbd>V</kbd> voice: {voice.replace(/\(.*?\)/g, '').trim()}
-            </>
-          )}
-        </span>
-      </footer>
 
       {/* Last, so a flash or a tear reads as being on the glass rather than
           underneath the chrome. It is pointer-events: none and unmounts the
