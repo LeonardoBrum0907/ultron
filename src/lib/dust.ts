@@ -8,12 +8,12 @@
  *
  *   drone    a low chord (A1, E2, A2, each a pair slightly detuned so it beats
  *            slowly) that swells with the motion: the currents assembling him
- *            at boot, the cursor through the dust, a part coming apart or back
+ *            at boot, a part coming apart or back. The cursor makes no sound:
+ *            Léo tried it and wanted the pointer silent.
  *   halo     the chord's upper partials, drifting a little in pitch, kept faint
  *            under the drone
  *   bloom    a sub-bass "vuum" falling away: under each stressed syllable, as
- *            the boot starts, on a sharp move of the cursor, and with a part
- *            coming apart or back
+ *            the boot starts, and with a part coming apart or back
  *   glide    a slow sine sigh downward as a part crumbles, upward as it is
  *            rebuilt
  *
@@ -64,8 +64,6 @@ let crumbleWas = 0
 let rebuildWas = 0
 let glidedAt = 0
 let assemblyWas = 0
-let cursorWas = 0
-let cursorBloomAt = 0
 
 /** A long dark tail: decaying noise, smoothed, as an impulse response. */
 function hall(ctx: AudioContext, secs = 4.5): AudioBuffer {
@@ -164,9 +162,9 @@ export function onMotion(m: Motion) {
   const g = ensure()
   if (!g) return
 
-  // Quick to come in, slow to let go, so a flick of the cursor still blooms and then rings out.
-  const swell = Math.max(m.assembly, 0.9 * m.cursor, 0.5 * m.crumble, 0.5 * m.rebuild)
-  const halo = Math.max(m.assembly, 0.9 * m.cursor)
+  // Quick to come in, slow to let go, so a short gesture still blooms and then rings out.
+  const swell = Math.max(m.assembly, 0.5 * m.crumble, 0.5 * m.rebuild)
+  const halo = m.assembly
   glide(g.drone.gain, swell, swell > g.drone.gain.value ? 0.12 : 0.6)
   glide(g.halo.gain, halo, halo > g.halo.gain.value ? 0.12 : 0.7)
 
@@ -185,17 +183,11 @@ export function onMotion(m: Motion) {
     sigh(g, 55, 220, 1.6, 0.08)
     bloom(g, 0.7)
   }
-  // The boot's first currents setting off, and a sharp move of the cursor (not every frame
-  // of it: once per flick).
+  // The boot's first currents setting off.
   if (m.assembly > 0.05 && assemblyWas <= 0.05) bloom(g, 1)
-  if (m.cursor > 0.45 && cursorWas <= 0.45 && now - cursorBloomAt > 0.9) {
-    cursorBloomAt = now
-    bloom(g, 0.55)
-  }
   crumbleWas = m.crumble
   rebuildWas = m.rebuild
   assemblyWas = m.assembly
-  cursorWas = m.cursor
 }
 
 /** The "vuum": a sub-bass tone falling away, with its octave for weight on small speakers. */
