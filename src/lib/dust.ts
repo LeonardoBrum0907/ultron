@@ -9,9 +9,11 @@
  *   drone    a low chord (A1, E2, A2, each a pair slightly detuned so it beats
  *            slowly) that swells with the motion: the currents assembling him
  *            at boot, the cursor through the dust, a part coming apart or back
- *   halo     the chord's upper partials, drifting a little in pitch, brought in
- *            by the assembly and the cursor
- *   bloom    a sub-bass "vuum" falling away under each stressed syllable
+ *   halo     the chord's upper partials, drifting a little in pitch, kept faint
+ *            under the drone
+ *   bloom    a sub-bass "vuum" falling away: under each stressed syllable, as
+ *            the boot starts, on a sharp move of the cursor, and with a part
+ *            coming apart or back
  *   glide    a slow sine sigh downward as a part crumbles, upward as it is
  *            rebuilt
  *
@@ -61,6 +63,9 @@ let graph: Graph | null = null
 let crumbleWas = 0
 let rebuildWas = 0
 let glidedAt = 0
+let assemblyWas = 0
+let cursorWas = 0
+let cursorBloomAt = 0
 
 /** A long dark tail: decaying noise, smoothed, as an impulse response. */
 function hall(ctx: AudioContext, secs = 4.5): AudioBuffer {
@@ -104,7 +109,7 @@ function ensure(): Graph | null {
     const o = ctx.createOscillator()
     o.frequency.value = f
     const g = ctx.createGain()
-    g.gain.value = a * 0.3
+    g.gain.value = a * 0.45
     o.connect(g).connect(drone)
     o.start()
   }
@@ -123,7 +128,8 @@ function ensure(): Graph | null {
     depth.gain.value = f * 0.003
     lfo.connect(depth).connect(o.frequency)
     const g = ctx.createGain()
-    g.gain.value = a * 0.3
+    // Faint on purpose: Léo wants the drone to carry it, not the partials.
+    g.gain.value = a * 0.1
     o.connect(g).connect(halo)
     o.start()
   }
@@ -171,31 +177,50 @@ export function onMotion(m: Motion) {
     glidedAt = now
     sigh(g, 330, 82, 1.4, 0.12)
     sigh(g, 220, 55, 1.6, 0.1)
+    bloom(g, 0.8)
   }
   if (m.rebuild > 0.05 && rebuildWas <= 0.05 && now - glidedAt > 0.5) {
     glidedAt = now
     sigh(g, 82, 330, 1.4, 0.1)
     sigh(g, 55, 220, 1.6, 0.08)
+    bloom(g, 0.7)
+  }
+  // The boot's first currents setting off, and a sharp move of the cursor (not every frame
+  // of it: once per flick).
+  if (m.assembly > 0.05 && assemblyWas <= 0.05) bloom(g, 1)
+  if (m.cursor > 0.45 && cursorWas <= 0.45 && now - cursorBloomAt > 0.9) {
+    cursorBloomAt = now
+    bloom(g, 0.55)
   }
   crumbleWas = m.crumble
   rebuildWas = m.rebuild
+  assemblyWas = m.assembly
+  cursorWas = m.cursor
 }
 
-/** A stressed syllable's wave out of the mouth: a sub-bass bloom under the word. */
-export function onWave(strength: number) {
-  const g = graph
-  if (!g) return
+/** The "vuum": a sub-bass tone falling away, with its octave for weight on small speakers. */
+function bloom(g: Graph, strength: number) {
   const at = g.ctx.currentTime
-  const o = g.ctx.createOscillator()
-  o.frequency.setValueAtTime(70, at)
-  o.frequency.exponentialRampToValueAtTime(28, at + 1.2)
-  const env = g.ctx.createGain()
-  env.gain.setValueAtTime(0.0001, at)
-  env.gain.exponentialRampToValueAtTime(0.35 * strength + 0.0001, at + 0.04)
-  env.gain.exponentialRampToValueAtTime(0.0001, at + 1.0)
-  o.connect(env).connect(g.send)
-  o.start(at)
-  o.stop(at + 1.05)
+  for (const [f0, f1, amp] of [
+    [72, 26, 0.55],
+    [144, 52, 0.12],
+  ]) {
+    const o = g.ctx.createOscillator()
+    o.frequency.setValueAtTime(f0, at)
+    o.frequency.exponentialRampToValueAtTime(f1, at + 1.6)
+    const env = g.ctx.createGain()
+    env.gain.setValueAtTime(0.0001, at)
+    env.gain.exponentialRampToValueAtTime(amp * strength + 0.0001, at + 0.05)
+    env.gain.exponentialRampToValueAtTime(0.0001, at + 1.5)
+    o.connect(env).connect(g.send)
+    o.start(at)
+    o.stop(at + 1.55)
+  }
+}
+
+/** A stressed syllable's wave out of the mouth: a vuum under the word. */
+export function onWave(strength: number) {
+  if (graph) bloom(graph, strength)
 }
 
 export function dustLevel(): number {
