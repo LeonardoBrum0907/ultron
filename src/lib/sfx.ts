@@ -8,9 +8,8 @@
  * To use real recordings instead, drop matching files into `public/audio/`
  * (boot.mp3, wake.mp3, listen.mp3, tool.mp3, done.mp3, error.mp3) and they take
  * over automatically. Pixabay's sci-fi UI and HUD packs are the usual source —
- * CC0, no attribution, safe on a monetised channel. `ambient.mp3` is not one of
- * these: the looping bed is music.ts's, and the oscillator pair at the bottom of
- * this file is only the fallback for when that file isn't there.
+ * CC0, no attribution, safe on a monetised channel. There is no music and no
+ * ambient bed: the cues are the only sound the interface makes besides his voice.
  */
 
 type Cue = 'boot' | 'wake' | 'listen' | 'tool' | 'done' | 'error'
@@ -18,7 +17,6 @@ type Cue = 'boot' | 'wake' | 'listen' | 'tool' | 'done' | 'error'
 let ctx: AudioContext | null = null
 let master: GainNode | null = null
 const samples = new Map<Cue, AudioBuffer>()
-let ambient: { source: AudioBufferSourceNode; gain: GainNode } | null = null
 
 /** Where the master sits when ULTRON isn't speaking. */
 let volume = 0.5
@@ -64,13 +62,11 @@ export async function unlockAudio(): Promise<void> {
       await c.resume()
     } catch {
       /**
-       * Swallowed on purpose, now that a clap can start the assistant.
-       *
-       * resume() rejects when there has been no user gesture, and a clap is not
-       * one — the browser has no idea a microphone heard anything. Letting that
-       * reject would abort the whole power-up over a sound that may well play
-       * fine anyway (any earlier interaction with the page unlocks it). Boot
-       * either way: the worst case is a silent start, not a dead one.
+       * Swallowed on purpose: resume() rejects when there has been no user
+       * gesture, and letting that reject would abort the whole power-up over a
+       * sound that may well play fine anyway (any earlier interaction with the
+       * page unlocks it). Boot either way: the worst case is a silent start,
+       * not a dead one.
        */
     }
   }
@@ -93,6 +89,15 @@ async function loadOverrides() {
       }
     }),
   )
+}
+
+/**
+ * The context and the output the cues play into, once audio is unlocked. Other
+ * sounds of the interface (the dust, see dust.ts) hang off the same master so
+ * the ducking under his voice covers them too. null until the first gesture.
+ */
+export function bus(): { ctx: AudioContext; out: GainNode } | null {
+  return ctx && master && ctx.state === 'running' ? { ctx, out: master } : null
 }
 
 export function setVolume(v: number) {
@@ -216,79 +221,10 @@ export function play(cue: Cue) {
   synth[cue]()
 }
 
-// ---------------------------------------------------------------------------
-// Ambient bed
-// ---------------------------------------------------------------------------
-
-/** Resting level of the synthesised bed. */
-const BED = 0.05
-
 /**
- * A quiet room tone under everything. Two detuned low oscillators through a
- * lowpass — barely audible on its own, but its absence is obvious. Keeps the
- * interface feeling powered rather than paused.
- *
- * Only a fallback: when public/audio/ambient.mp3 is present music.ts owns this
- * layer, which is why nothing calls this today.
- */
-export function startAmbient() {
-  if (ambient || !ctx || ctx.state !== 'running') return
-  const c = ctx
-
-  const gain = c.createGain()
-  gain.gain.value = 0
-  gain.connect(master!)
-
-  const frames = c.sampleRate * 4
-  const buf = c.createBuffer(1, frames, c.sampleRate)
-  const data = buf.getChannelData(0)
-  for (let i = 0; i < frames; i++) {
-    const t = i / c.sampleRate
-    data[i] =
-      (Math.sin(2 * Math.PI * 55 * t) * 0.5 +
-        Math.sin(2 * Math.PI * 55.6 * t) * 0.5 + // slight detune = slow beating
-        (Math.random() * 2 - 1) * 0.06) *
-      0.5
-  }
-
-  const source = c.createBufferSource()
-  source.buffer = buf
-  source.loop = true
-
-  const lp = c.createBiquadFilter()
-  lp.type = 'lowpass'
-  lp.frequency.value = 260
-
-  source.connect(lp).connect(gain)
-  source.start()
-  ambient = { source, gain }
-  rampTo(gain.gain, BED, 3)
-}
-
-export function stopAmbient() {
-  if (!ambient || !ctx) return
-  const { source, gain } = ambient
-  ambient = null
-  rampTo(gain.gain, 0, 0.6)
-  // Stop the node itself once it's inaudible, or it keeps a buffer looping in
-  // the graph for as long as the page is open.
-  setTimeout(() => {
-    source.stop()
-    source.disconnect()
-    gain.disconnect()
-  }, 800)
-}
-
-/**
- * Duck everything this module makes while ULTRON speaks.
- *
- * This used to touch only the synthesised bed, and return early when there
- * wasn't one — which there never is, because the ambient layer in the shipped
- * configuration comes from music.ts and startAmbient() below is a fallback
- * nothing currently calls. So it was a permanent no-op. The interface cues and
- * the bed both hang off the master, so ducking there is honest either way: with
- * the bed running it ducks the bed, and without it it still keeps a tool tick
- * or a completion chime from landing on top of a word.
+ * Duck everything this module makes while ULTRON speaks, so a tool tick or a
+ * completion chime never lands on top of a word. The cues all hang off the
+ * master, so that is where it ducks.
  */
 export function duck(on: boolean) {
   if (ducked === on || !master) return

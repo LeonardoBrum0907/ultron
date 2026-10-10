@@ -173,6 +173,11 @@ const HEAVY = HEAVY_MODEL !== 'off'
 /** The Agent tool under both of its names, as with the builtins below. */
 const isDelegation = (name) => name === 'Agent' || name === 'Task'
 
+/** Which model and effort a frame came from, for the page's log panel: the
+ *  voice, or (sub) the heavy subagent working under it. */
+const ranOn = (sub) =>
+  sub && HEAVY ? { model: HEAVY_MODEL, effort: HEAVY_EFFORT } : { model: MODEL, effort: EFFORT }
+
 /**
  * Both spellings of every renamed built-in are listed on purpose. The SDK
  * presents several tools to the model under newer names — Task is Agent,
@@ -470,16 +475,12 @@ The blades — the ONLY surface:
 - Never read a blade aloud. Say what it means and let them look.
 
 The interface itself:
-- The interface is yours as well. \`ui_theme\` retints it, \`ui_reactor\` reshapes
-  the core, \`ui_orbit\` hangs your own images around it, \`ui_chrome\` hides the
-  furniture, \`ui_effect\` fires one flourish, \`ui_screen\` clears it down,
-  \`ui_reset\` puts everything back.
+- The interface is yours as well. \`ui_theme\` retints it, \`ui_chrome\` hides the
+  transcript, \`ui_screen\` clears it down, \`ui_reset\` puts everything back.
 - Change it when the change carries meaning and the meaning arrives faster than
-  speech: red before you report the failure, the chrome stripped so one image
-  fills the frame, the reactor slowed while you wait on something. Never
-  decorate, and never change more than one thing at a time.
-- Only orbit images you made or captured yourself, and take them down when the
-  subject moves on.
+  speech: red before you report the failure, the transcript hidden so one image
+  fills the frame. Never decorate, and never change more than one thing at a
+  time.
 - Put it back. A colour that outlives the moment that earned it is a fault.
 - Never mention that you have done any of it. They are looking at the screen.
 
@@ -1364,6 +1365,8 @@ wss.on('connection', (socket) => {
    * held, refusals included: a refused tool is work that did not get done.
    */
   const workTools = new Map()
+  /** Every tool's id → whether the heavy subagent called it (else the voice). */
+  const toolSub = new Map()
 
   /**
    * Resolves when the turn in flight has actually finished.
@@ -1396,9 +1399,10 @@ wss.on('connection', (socket) => {
    */
   const SETTLE_CAP_MS = 400
 
-  const announceTool = (id, name) => {
+  const announceTool = (id, name, sub = false) => {
     if (!name || (id && seenTools.has(id))) return
     if (id) seenTools.add(id)
+    if (id) toolSub.set(id, sub)
     // The display tool isn't work being done, it's the HUD drawing itself —
     // announcing it would put "ultron · display" in the tool badge and trigger
     // a "working on it" filler for something already on screen.
@@ -1412,7 +1416,7 @@ wss.on('connection', (socket) => {
       escalated = true
       console.log(`[ultron] handed to heavy (${HEAVY_MODEL})`)
     }
-    if (decideTool(name)) return sendTurn({ type: 'tool', name })
+    if (decideTool(name)) return sendTurn({ type: 'tool', name, ...ranOn(sub) })
     if (id) heldTools.set(id, name)
   }
 
@@ -1420,14 +1424,14 @@ wss.on('connection', (socket) => {
     const name = heldTools.get(id)
     if (name === undefined) return
     heldTools.delete(id)
-    if (!failed) sendTurn({ type: 'tool', name })
+    if (!failed) sendTurn({ type: 'tool', name, ...ranOn(toolSub.get(id)) })
   }
 
   const reportTool = (id, failed) => {
     const name = workTools.get(id)
     if (name === undefined) return
     workTools.delete(id)
-    sendTurn({ type: 'tool_result', name, ok: !failed })
+    sendTurn({ type: 'tool_result', name, ok: !failed, ...ranOn(toolSub.get(id)) })
   }
 
   const session = query({
@@ -1566,7 +1570,7 @@ wss.on('connection', (socket) => {
               ev?.type === 'content_block_start' &&
               ev.content_block?.type === 'tool_use'
             ) {
-              announceTool(ev.content_block.id, ev.content_block.name)
+              announceTool(ev.content_block.id, ev.content_block.name, msg.parent_tool_use_id != null)
             }
             break
           }
@@ -1576,7 +1580,7 @@ wss.on('connection', (socket) => {
             // than partial events. Deduped against the stream_event path.
             for (const block of msg.content ?? msg.message?.content ?? []) {
               if (block.type === 'tool_use') {
-                announceTool(block.id, block.name)
+                announceTool(block.id, block.name, msg.parent_tool_use_id != null)
               }
             }
             break
@@ -1620,6 +1624,8 @@ wss.on('connection', (socket) => {
                 durationMs: msg.duration_ms ?? null,
                 turns: msg.num_turns ?? null,
                 escalated,
+                ...ranOn(false),
+                heavy: escalated && HEAVY ? ranOn(true) : null,
               })
             } else {
               console.error(
@@ -1631,6 +1637,7 @@ wss.on('connection', (socket) => {
                 message: RESULT_FAILURES[msg.subtype] ?? RESULT_FAILURES.default,
                 reason: msg.subtype,
                 costUsd: msg.total_cost_usd ?? null,
+                ...ranOn(false),
               })
             }
             // Whatever was waiting on this turn to finish can go now. This is
@@ -1641,6 +1648,7 @@ wss.on('connection', (socket) => {
             // otherwise grow for as long as the socket is open.
             seenTools.clear()
             heldTools.clear()
+            toolSub.clear()
             escalated = false
             break
 

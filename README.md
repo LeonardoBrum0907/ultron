@@ -216,8 +216,7 @@ chose.
 Power-up plays a four-beat Iron Man start-up (`src/ui/Boot.tsx`): an
 "INITIATING SYSTEM" status bar with a segmented progress bar and boot log; then
 concentric reticle rings resolving into "U.L.T.R.O.N"; then a suit schematic;
-then the triangular arc reactor lighting up — with a start-up sound under it
-(`public/audio/boot-music.mp3`).
+then the triangular arc reactor lighting up.
 
 ---
 

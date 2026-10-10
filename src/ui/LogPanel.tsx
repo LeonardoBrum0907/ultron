@@ -10,6 +10,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { BRIDGE_HTTP_URL } from '../config'
 import { clearLog, compact, useLog } from '../lib/log'
+import { useStore, type Phase } from '../store'
+import { dustLevel, setDustLevel } from '../lib/dust'
+
+/** The phase, as the status line on the main screen used to say it. */
+const PHASE: Record<Phase, string> = {
+  offline: 'desligado',
+  boot: 'iniciando',
+  dormant: 'em espera, diga “hey ultron”',
+  waking: 'acordando',
+  listening: 'ouvindo',
+  thinking: 'pensando',
+  tooling: 'acessando sistemas',
+  speaking: 'respondendo',
+}
 
 const OPEN_KEY = 'ultron.log'
 
@@ -29,6 +43,11 @@ export function LogPanel() {
   const list = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const [balance, setBalance] = useState<Balance>(null)
+  const voice = useStore((s) => s.voice)
+  const phase = useStore((s) => s.phase)
+  const bootNote = useStore((s) => s.bootNote)
+  const connected = useStore((s) => s.connected)
+  const [dust, setDust] = useState(dustLevel)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -91,6 +110,43 @@ export function LogPanel() {
         <button type="button" className="lg-clear" onClick={clearLog}>
           limpar
         </button>
+      </div>
+      {/* What used to sit round the edges of the main screen: the phase, the
+          voice download while it boots, and which systems are linked. */}
+      <div className="lg-state">
+        <div>
+          <b>status</b> {phase === 'boot' && bootNote ? bootNote : PHASE[phase]}
+        </div>
+        <div>
+          <b>sistemas</b> {[...connected, 'web'].join(' · ')}
+        </div>
+        <label className="lg-dust">
+          <b>som da poeira</b>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={dust}
+            onChange={(e) => {
+              const v = Number(e.target.value)
+              setDust(v)
+              setDustLevel(v)
+            }}
+          />
+          {Math.round(dust * 100)}%
+        </label>
+      </div>
+      {/* The keys live here rather than on the main screen, which keeps nothing
+          but the figure and the conversation. */}
+      <div className="lg-keys">
+        diga <b>“hey ultron”</b> · <kbd>Space</kbd> falar · <kbd>G</kbd> mãos · <kbd>D</kbd> diagnóstico
+        {voice && (
+          <>
+            {' · '}
+            <kbd>V</kbd> voz: {voice.replace(/\(.*?\)/g, '').trim()}
+          </>
+        )}
       </div>
       <div className="lg-totals">
         <div>

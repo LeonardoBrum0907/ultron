@@ -61,50 +61,6 @@ export type Turn = {
 }
 
 /**
- * An image ULTRON has put into orbit around the reactor.
- *
- * The reason this is a store record rather than something the scene owns: the
- * objects outlive the turn that created them and have to survive a re-render,
- * a phase change and a scene remount. Keeping them here means the scene stays
- * a pure function of state and ULTRON never has to ask what is already up.
- */
-export type OrbitObject = {
-  id: string
-  /** Image URL. Everything renders: absolute disk paths and file:// route
-   *  through the bridge's /file endpoint, remote http(s) through its /img
-   *  proxy, and data: loads directly. The page itself never fetches a remote
-   *  host — the bridge does it server-side — which is why the CSP can stay
-   *  tight and why hosts that refuse to be hotlinked still work. */
-  src: string
-  /** Orbit radius as a fraction of the smaller viewport axis. 0.1 .. 1.2 */
-  radius: number
-  /** Revolutions per minute. Negative = counter-clockwise. -30 .. 30 */
-  speed: number
-  /** Rendered size in CSS pixels. 16 .. 400 */
-  size: number
-  /** Orbit plane tilt in degrees, for a 3D-ish ellipse. -80 .. 80 */
-  tilt: number
-  /** 0 .. 1 */
-  opacity: number
-  /** Starting angle in degrees, so multiple objects can be spaced out. */
-  phase: number
-}
-
-/**
- * A one-shot flourish across the whole interface.
- *
- * The timestamp is the entire point. An effect is an event, not a state, but
- * it has to travel through a state store to reach the components that play it
- * — so asking for a glitch twice in a row must produce two glitches, and it
- * only does if something in the record actually changes between them.
- */
-export type UiEffect = {
-  kind: 'glitch' | 'pulse' | 'scan' | 'shake' | 'flash'
-  /** Timestamp; a NEW value re-triggers the effect even if kind is unchanged. */
-  at: number
-}
-
-/**
  * Everything ULTRON can change about his own appearance.
  *
  * All of it is an override layer: at UI_DEFAULTS every field means "carry on as
@@ -120,48 +76,21 @@ export type UiState = {
   background: string | null
   /** Per-phase colour overrides, merged over the built-in phaseColor map. */
   palette: Partial<Record<Phase, string>>
-  reactor: {
-    /** null = follow accent/phase. */
-    color: string | null
-    /** Size multiplier. 0.2 .. 3, default 1. */
-    scale: number
-    /** Glow/brightness multiplier. 0 .. 3, default 1. */
-    intensity: number
-    /** Rotation-rate multiplier. 0 .. 5, default 1. */
-    spin: number
-    style: 'ring' | 'sphere' | 'wire'
-    visible: boolean
-  }
-  orbits: OrbitObject[]
   chrome: {
-    systems: boolean      // the left SYSTEMS rail
     transcript: boolean   // the conversation log
-    toolBadge: boolean    // the active-tool readout under the reactor
-    suggestions: boolean  // the "try saying…" hint
-    brand: boolean        // the U.L.T.R.O.N. wordmark + status
   }
-  effect: UiEffect | null
 }
 
 export const UI_DEFAULTS: UiState = {
   accent: null, background: null, palette: {},
-  reactor: { color: null, scale: 1, intensity: 1, spin: 1, style: 'ring', visible: true },
-  orbits: [],
-  chrome: { systems: true, transcript: true, toolBadge: true, suggestions: true, brand: true },
-  effect: null,
+  chrome: { transcript: true },
 }
 
-/**
- * A deep-partial of UiState, minus the two fields that are not patchable:
- * orbits are addressed one at a time by id, and an effect is fired rather than
- * set — patching either through here would let a theme change silently wipe
- * whatever is in orbit.
- */
+/** A deep-partial of UiState. */
 export type UiPatch = {
   accent?: string | null
   background?: string | null
   palette?: Partial<Record<Phase, string>>
-  reactor?: Partial<UiState['reactor']>
   chrome?: Partial<UiState['chrome']>
 }
 
@@ -176,8 +105,6 @@ function defaultUi(): UiState {
   return {
     ...UI_DEFAULTS,
     palette: { ...UI_DEFAULTS.palette },
-    reactor: { ...UI_DEFAULTS.reactor },
-    orbits: [],
     chrome: { ...UI_DEFAULTS.chrome },
   }
 }
@@ -202,14 +129,6 @@ function defined<T extends object>(patch: T | undefined): Partial<T> {
   return out as Partial<T>
 }
 
-/**
- * Eight is a ceiling on the renderer, not on taste. Every orbiting object is
- * another texture the scene transforms each frame on top of the reactor and
- * the particle field, and past eight the frame rate visibly dips on the
- * machine this gets filmed on — which is the one place it must not.
- */
-const MAX_ORBITS = 8
-
 type State = {
   phase: Phase
   /** 0..1 mic loudness, drives the reactor pulse. */
@@ -217,7 +136,6 @@ type State = {
   /** What ULTRON is currently reading aloud or has just said. */
   caption: string
   turns: Turn[]
-  activeTool: string | null
   error: string | null
   connected: string[]
   /** Name of the speech-synthesis voice in use, shown in the HUD. */
@@ -255,17 +173,12 @@ type State = {
   setPhase: (p: Phase) => void
   setLevel: (l: number) => void
   setCaption: (c: string) => void
-  setActiveTool: (t: string | null) => void
   setError: (e: string | null) => void
   setConnected: (c: string[]) => void
   pushTurn: (t: Turn) => void
   appendToLastTurn: (text: string) => void
 
   applyUi: (patch: UiPatch) => void
-  addOrbit: (o: OrbitObject) => void
-  removeOrbit: (id: string) => void
-  clearOrbits: () => void
-  fireEffect: (kind: UiEffect['kind']) => void
   resetUi: () => void
   clearScreen: (what: 'all' | 'panels' | 'transcript') => void
 }
@@ -275,7 +188,6 @@ export const useStore = create<State>((set) => ({
   level: 0,
   caption: '',
   turns: [],
-  activeTool: null,
   error: null,
   connected: [],
   voice: '',
@@ -349,7 +261,6 @@ export const useStore = create<State>((set) => ({
   setPhase: (phase) => set({ phase }),
   setLevel: (level) => set({ level }),
   setCaption: (caption) => set({ caption }),
-  setActiveTool: (activeTool) => set({ activeTool }),
   setError: (error) => set({ error }),
   setConnected: (connected) => set({ connected }),
   pushTurn: (turn) => set((s) => ({ turns: [...s.turns.slice(-40), turn] })),
@@ -362,9 +273,8 @@ export const useStore = create<State>((set) => ({
       return { turns }
     }),
 
-  // Deep on purpose. "Make the reactor red" arrives as a patch touching only
-  // reactor.color, and a shallow merge would take the scale, spin and style
-  // with it — one instruction silently undoing three earlier ones. Note the
+  // Deep on purpose: a patch touching one phase colour must not take the
+  // others with it. Note the
   // `=== undefined` tests rather than `??`: null is a real value here (it means
   // "go back to following the phase"), and only an absent key means "leave it".
   applyUi: (patch) =>
@@ -374,27 +284,9 @@ export const useStore = create<State>((set) => ({
         accent: patch.accent === undefined ? s.ui.accent : patch.accent,
         background: patch.background === undefined ? s.ui.background : patch.background,
         palette: { ...s.ui.palette, ...defined(patch.palette) },
-        reactor: { ...s.ui.reactor, ...defined(patch.reactor) },
         chrome: { ...s.ui.chrome, ...defined(patch.chrome) },
       },
     })),
-  // Re-issuing an object under an id that is already in orbit moves it rather
-  // than stacking a second copy behind the first — that is what "put it a bit
-  // further out" has to mean. Only a genuinely new id grows the list, so the
-  // MAX_ORBITS cull can only ever drop the object that has been up longest.
-  addOrbit: (orbit) =>
-    set((s) => {
-      const known = s.ui.orbits.some((o) => o.id === orbit.id)
-      const next = known
-        ? s.ui.orbits.map((o) => (o.id === orbit.id ? orbit : o))
-        : [...s.ui.orbits, orbit]
-      return { ui: { ...s.ui, orbits: next.slice(-MAX_ORBITS) } }
-    }),
-  removeOrbit: (id) =>
-    set((s) => ({ ui: { ...s.ui, orbits: s.ui.orbits.filter((o) => o.id !== id) } })),
-  clearOrbits: () => set((s) => ({ ui: { ...s.ui, orbits: [] } })),
-  fireEffect: (kind) =>
-    set((s) => ({ ui: { ...s.ui, effect: { kind, at: Date.now() } } })),
   resetUi: () => set({ ui: defaultUi() }),
   // An explicit order outranks the sticky flag. `hold: 'sticky'` only ever
   // meant "survive the next turn boundary"; when someone says "clear the
@@ -410,7 +302,7 @@ export const useStore = create<State>((set) => ({
       const blades = what === 'transcript' ? s.blades : []
       const cleared = { panels, turns, blades, focusedBlade: null, expandedBlade: null }
       return what === 'all'
-        ? { ...cleared, caption: '', activeTool: null }
+        ? { ...cleared, caption: '' }
         : cleared
     }),
 }))
@@ -443,10 +335,7 @@ export function accentFor(phase: Phase, ui: UiState): string {
 // Handy while dressing the scene for camera: in the dev server you can drive
 // the visuals from the console without talking, e.g.
 //   __ultron.setPhase('tooling'); __ultron.setLevel(0.8)
-//   __ultron.applyUi({ accent: '#ff5a3c', reactor: { style: 'wire', spin: 3 } })
-//   __ultron.addOrbit({ id: 'moon', src: '/vite.svg', radius: 0.6, speed: 8,
-//                       size: 90, tilt: 25, opacity: 1, phase: 0 })
-//   __ultron.fireEffect('glitch'); __ultron.resetUi()
+//   __ultron.applyUi({ accent: '#ff5a3c' }); __ultron.resetUi()
 if (import.meta.env.DEV) {
   // Not `useStore.getState()` directly: zustand replaces the state object on
   // every set, so a captured snapshot's *actions* keep working while every

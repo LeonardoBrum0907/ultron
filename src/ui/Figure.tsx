@@ -1,7 +1,30 @@
 import { useEffect, useRef } from 'react'
-import { createFigure, type Loudness } from '../../proto/figure.js'
+import { createFigure, type Loudness, type Zone } from '../../proto/figure.js'
 import { mind } from '../lib/mind'
+import * as dust from '../lib/dust'
 import { useStore } from '../store'
+
+/**
+ * The parts of the HUD the dust answers to, read off the page each frame: the
+ * transcript (calm, so it reads over his chest) while it has a line, and the
+ * text box (its border traced in dust) while it has the focus. Two rects a
+ * frame is cheap; nothing else on the page is measured.
+ */
+function hudZones(): (Zone | null)[] {
+  // Fixed slots, so a zone that goes away fades where it was.
+  const out: (Zone | null)[] = [null, null]
+  const log = document.querySelector('.log')
+  if (log && log.childElementCount > 0) {
+    const r = log.getBoundingClientRect()
+    if (r.height > 0) out[0] = { left: r.left - 28, top: r.top - 22, right: r.right + 28, bottom: r.bottom + 22, calm: 1 }
+  }
+  const box = document.querySelector('.textbox')
+  if (box) {
+    const r = box.getBoundingClientRect()
+    out[1] = { left: r.left, top: r.top, right: r.right, bottom: r.bottom, rim: box.contains(document.activeElement) ? 1 : 0 }
+  }
+  return out
+}
 
 /**
  * Ultron himself: the particle figure from proto/, behind the HUD.
@@ -38,6 +61,9 @@ export function Figure({
       hears: () => calls.current.hears(),
       says: () => calls.current.says(),
       onIgnite: () => calls.current.onIgnite(),
+      zones: hudZones,
+      motion: dust.onMotion,
+      onWave: dust.onWave,
     })
       .then((figure) => {
         if (gone) return figure.dispose()
