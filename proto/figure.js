@@ -26,8 +26,10 @@ import { createHearing } from './hearing.js'
  *   speaking; null falls back to the made-up voice
  * @param {() => void} [opts.onIgnite] a click on the dust while offline (else it boots itself)
  * @param {() => (object | null)[]} [opts.zones] where the HUD is on screen this frame (see HUD_ZONES)
+ * @param {(m: object) => void} [opts.motion] how much the dust is moving this frame, for its sound (see MOTION)
+ * @param {(strength: number) => void} [opts.onWave] a stressed syllable sent a wave out from the mouth
  */
-export async function createFigure({ canvas, mind, controls = false, tickMind = controls, hears, says, onIgnite, zones }) {
+export async function createFigure({ canvas, mind, controls = false, tickMind = controls, hears, says, onIgnite, zones, motion, onWave }) {
   // The prototype page's own elements; hosted, a detached stand-in takes every write.
   const stand = {}
   const $ = (id) => (controls && document.getElementById(id)) || (stand[id] ??= document.createElement('div'))
@@ -913,6 +915,8 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
   // says each frame where they are and what each wants (zones()); the strengths ease here,
   // so a zone fades in and out instead of switching.
   const ZONES = 2
+  // MOTION, handed to the host each frame (one object, reused).
+  const moving = { assembly: 0, cursor: 0, crumble: 0, rebuild: 0 }
   const zoneU = { value: Array.from({ length: ZONES }, () => new THREE.Vector4()) }
   const zoneFxU = { value: Array.from({ length: ZONES }, () => new THREE.Vector2()) }
   const curA = { value: Array.from({ length: K }, () => new THREE.Vector4()) }
@@ -2576,6 +2580,7 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
       speak.stressed = true
       speak.stressAt = clock
       speak.waves.push({ at: clock, strength: Math.min(1, spoken.syllable) })
+      onWave?.(Math.min(1, spoken.syllable))
     }
     if (speaking && spoken.phraseEnd) speak.pulses.push({ at: clock, strength: 1.3 * tone.strength, speed: 1.3 * tone.speed, reach: 0, last: true })
     speak.flare *= Math.exp(-dt / 0.3)
@@ -2789,6 +2794,19 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
       rebuild.turn = ((6 + Math.random() * 9) * Math.PI) / 180 * (Math.random() < 0.5 ? -1 : 1)
     }
     rebuild.amount = rebuildAmt
+
+    // MOTION: how much the dust is moving, for whoever gives it a sound. Nothing here is read
+    // back from the GPU: each number is one the frame already holds. assembly is the currents in
+    // flight (the boot building the body, or the body coming apart), cursor how fast the pointer
+    // is cutting through it, crumble and rebuild the mind's gestures on a part of the body.
+    if (motion) {
+      const sm = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t) }
+      moving.assembly = asmMode === 'up' ? sm(0, 1.2, asm) * (1 - sm(8.2, ASM_END, asm)) : asmMode === 'down' ? 0.8 * sm(-0.2, 1.5, asm) : 0
+      moving.cursor = mouse.seen ? mouse.speed : 0
+      moving.crumble = crumbleAmt
+      moving.rebuild = rebuildAmt
+      motion(moving)
+    }
 
     // The HUD (see HUD_ZONES): a zone the host no longer names keeps its last place and fades.
     const hud = zones?.() ?? []

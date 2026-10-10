@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BRIDGE_HTTP_URL } from '../config'
 import { clearLog, compact, useLog } from '../lib/log'
 import { useStore, type Phase } from '../store'
+import { dustLevel, setDustLevel } from '../lib/dust'
 
 /** The phase, as the status line on the main screen used to say it. */
 const PHASE: Record<Phase, string> = {
@@ -46,6 +47,7 @@ export function LogPanel() {
   const phase = useStore((s) => s.phase)
   const bootNote = useStore((s) => s.bootNote)
   const connected = useStore((s) => s.connected)
+  const [dust, setDust] = useState(dustLevel)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -118,6 +120,22 @@ export function LogPanel() {
         <div>
           <b>sistemas</b> {[...connected, 'web'].join(' · ')}
         </div>
+        <label className="lg-dust">
+          <b>som da poeira</b>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={dust}
+            onChange={(e) => {
+              const v = Number(e.target.value)
+              setDust(v)
+              setDustLevel(v)
+            }}
+          />
+          {Math.round(dust * 100)}%
+        </label>
       </div>
       {/* The keys live here rather than on the main screen, which keeps nothing
           but the figure and the conversation. */}

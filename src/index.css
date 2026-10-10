@@ -1460,6 +1460,17 @@ canvas.figure {
   font-weight: 500;
 }
 
+.lg-dust {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lg-dust input {
+  flex: 0 1 8rem;
+  accent-color: #19d8d2;
+}
+
 .lg-keys {
   padding: 0.4rem 0.8rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);

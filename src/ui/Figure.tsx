@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { createFigure, type Loudness, type Zone } from '../../proto/figure.js'
 import { mind } from '../lib/mind'
+import * as dust from '../lib/dust'
 import { useStore } from '../store'
 
 /**
@@ -61,6 +62,8 @@ export function Figure({
       says: () => calls.current.says(),
       onIgnite: () => calls.current.onIgnite(),
       zones: hudZones,
+      motion: dust.onMotion,
+      onWave: dust.onWave,
     })
       .then((figure) => {
         if (gone) return figure.dispose()

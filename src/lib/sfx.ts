@@ -91,6 +91,15 @@ async function loadOverrides() {
   )
 }
 
+/**
+ * The context and the output the cues play into, once audio is unlocked. Other
+ * sounds of the interface (the dust, see dust.ts) hang off the same master so
+ * the ducking under his voice covers them too. null until the first gesture.
+ */
+export function bus(): { ctx: AudioContext; out: GainNode } | null {
+  return ctx && master && ctx.state === 'running' ? { ctx, out: master } : null
+}
+
 export function setVolume(v: number) {
   volume = Math.max(0, Math.min(1, v))
   if (master) rampTo(master.gain, ducked ? volume * DUCK : volume, 0.05)
