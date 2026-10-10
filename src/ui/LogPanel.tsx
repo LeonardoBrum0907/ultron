@@ -63,9 +63,13 @@ export function LogPanel() {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return
-      // / opens the panel with the terminal already focused.
-      if (e.key === '/') {
+      // AltGr arrives on Windows as Ctrl+Alt, and on an ABNT2 layout over an
+      // ANSI board (no key beside the right Shift) / is AltGr+Q.
+      const altGr = e.getModifierState?.('AltGraph')
+      if (e.repeat || e.metaKey || ((e.ctrlKey || e.altKey) && !altGr)) return
+      // / opens the panel with the terminal already focused: the / character
+      // however the layout makes it, or the key beside the right Shift.
+      if (e.key === '/' || (e.code === 'Slash' && !altGr)) {
         e.preventDefault()
         try {
           localStorage.setItem(OPEN_KEY, '1')
