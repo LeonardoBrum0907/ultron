@@ -10,8 +10,7 @@
  */
 import { useState } from 'react'
 import { useStore } from '../store'
-import { isMuted, setMuted } from '../lib/tts'
-import { isMicOn } from '../lib/audio'
+import { setMuted } from '../lib/tts'
 
 type Props = {
   /** A line the user typed and sent. */
@@ -25,8 +24,9 @@ type Props = {
 export function TextBox({ onSend, onMute, onMic }: Props) {
   const phase = useStore((s) => s.phase)
   const [text, setText] = useState('')
-  const [muted, setMutedState] = useState(isMuted)
-  const [mic, setMic] = useState(isMicOn)
+  // In the store, so `mic` and `voice` typed in the L panel flip these too.
+  const muted = useStore((s) => s.muted)
+  const mic = useStore((s) => s.mic)
   // Until he is powered on there is no turn to start: the click on the dust
   // is also what unlocks audio, so it stays the way in.
   const asleep = phase === 'offline' || phase === 'boot'
@@ -41,14 +41,12 @@ export function TextBox({ onSend, onMute, onMic }: Props) {
   const toggle = () => {
     const next = !muted
     setMuted(next)
-    setMutedState(next)
+    useStore.getState().setMutedFlag(next)
     onMute(next)
   }
 
   const toggleMic = () => {
-    const next = !mic
-    setMic(next)
-    onMic(next)
+    onMic(!mic)
   }
 
   return (

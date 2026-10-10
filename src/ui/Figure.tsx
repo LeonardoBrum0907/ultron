@@ -67,8 +67,10 @@ export function Figure({
     })
       .then((figure) => {
         if (gone) return figure.dispose()
-        figure.setPhase(useStore.getState().phase)
-        const unsub = useStore.subscribe((s, prev) => s.phase !== prev.phase && figure.setPhase(s.phase))
+        // A phase held from the terminal wins over the conversation's own.
+        const shown = (s: { phase: string; heldPhase: string | null }) => s.heldPhase ?? s.phase
+        figure.setPhase(shown(useStore.getState()))
+        const unsub = useStore.subscribe((s, prev) => shown(s) !== shown(prev) && figure.setPhase(shown(s)))
         stop = () => {
           unsub()
           figure.dispose()

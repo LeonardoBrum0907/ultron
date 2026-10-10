@@ -13,7 +13,7 @@
  */
 import { useSyncExternalStore } from 'react'
 
-export type Source = 'claude' | 'eleven' | 'voice' | 'bridge' | 'app'
+export type Source = 'claude' | 'eleven' | 'voice' | 'bridge' | 'app' | 'cmd'
 export type Level = 'info' | 'warn' | 'error'
 
 export type Entry = { id: number; t: number; src: Source; level: Level; text: string }

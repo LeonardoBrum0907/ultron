@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { isMicOn } from './lib/audio'
+import { isMuted } from './lib/tts'
 
 export type Phase =
   | 'offline'   // waiting for the click that unlocks audio
@@ -158,6 +160,13 @@ type State = {
   expandedBlade: string | null
   /** ULTRON's control over his own appearance. UI_DEFAULTS == the stock look. */
   ui: UiState
+  /** A phase the figure is held in from the L panel's terminal (`state <name>`),
+   *  whatever the conversation is doing. null = it follows the phase. */
+  heldPhase: Phase | null
+  /** The mic and voice switches, mirrored here so the text box and the
+   *  terminal show the same thing whichever one flipped them. */
+  mic: boolean
+  muted: boolean
 
   setVoice: (v: string) => void
   setGestures: (on: boolean) => void
@@ -171,6 +180,9 @@ type State = {
   focusBlade: (id: string | null) => void
   expandBlade: (id: string | null) => void
   setPhase: (p: Phase) => void
+  holdPhase: (p: Phase | null) => void
+  setMicFlag: (on: boolean) => void
+  setMutedFlag: (on: boolean) => void
   setLevel: (l: number) => void
   setCaption: (c: string) => void
   setError: (e: string | null) => void
@@ -198,6 +210,9 @@ export const useStore = create<State>((set) => ({
   focusedBlade: null,
   expandedBlade: null,
   bootNote: '',
+  heldPhase: null,
+  mic: isMicOn(),
+  muted: isMuted(),
   ui: defaultUi(),
 
   setVoice: (voice) => set({ voice }),
@@ -259,6 +274,9 @@ export const useStore = create<State>((set) => ({
   focusBlade: (focusedBlade) => set({ focusedBlade }),
   expandBlade: (expandedBlade) => set({ expandedBlade }),
   setPhase: (phase) => set({ phase }),
+  holdPhase: (heldPhase) => set({ heldPhase }),
+  setMicFlag: (mic) => set({ mic }),
+  setMutedFlag: (muted) => set({ muted }),
   setLevel: (level) => set({ level }),
   setCaption: (caption) => set({ caption }),
   setError: (error) => set({ error }),
