@@ -949,7 +949,7 @@ console.log(
     `hearing ${elevenKey() && STT_ENGINE === 'elevenlabs' ? 'ElevenLabs Scribe' : 'browser'}`,
 )
 console.log(
-  `[ultron] model ${MODEL} · effort ${EFFORT}` +
+  `[ultron] brain ${config.brain.kind} · model ${MODEL} · effort ${EFFORT}` +
     (HEAVY ? ` · heavy ${HEAVY_MODEL} · effort ${HEAVY_EFFORT}` : ''),
 )
 console.log(

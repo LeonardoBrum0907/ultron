@@ -6,14 +6,33 @@
  * a module that read process.env at the top would miss it.
  */
 
+/** How hard a model thinks before it answers. */
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
+const EFFORTS: readonly Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
+
 /** Which model a frame came from, as the page's log panel shows it. */
 export interface ModelChoice {
   model: string
-  effort: string
+  effort: Effort
 }
+
+/**
+ * The brains the bridge can run. Only Claude for now; the setting exists so
+ * another one (an OpenAI-compatible endpoint, a local Ollama) can be added
+ * without changing how the bridge is configured.
+ */
+export type BrainKind = 'claude'
+
+const BRAINS: readonly BrainKind[] = ['claude']
 
 /** Who thinks, and with which models. */
 export interface BrainSettings {
+  kind: BrainKind
+  /** Where the brain's API lives, for brains that are reached over HTTP. Unused by Claude. */
+  url: string | null
+  /** Its API key, when it needs one. Unused by Claude, which runs on the Claude Code login. Never logged. */
+  key: string | null
   /** The voice: answers conversation and quick actions itself. */
   voice: ModelChoice
   /** The subagent the voice hands long work to, or null when ULTRON_HEAVY_MODEL=off. */
@@ -56,9 +75,25 @@ type Env = Record<string, string | undefined>
 function readBrain(env: Env): BrainSettings {
   const heavyModel = env.ULTRON_HEAVY_MODEL ?? 'claude-opus-5-5'
   return {
-    voice: { model: env.ULTRON_MODEL ?? 'claude-sonnet-5-5', effort: env.ULTRON_EFFORT ?? 'low' },
-    heavy: heavyModel === 'off' ? null : { model: heavyModel, effort: env.ULTRON_HEAVY_EFFORT ?? 'high' },
+    kind: oneOf('ULTRON_BRAIN', env.ULTRON_BRAIN ?? 'claude', BRAINS),
+    url: env.ULTRON_BRAIN_URL || null,
+    key: env.ULTRON_BRAIN_KEY || null,
+    voice: {
+      model: env.ULTRON_MODEL ?? 'claude-sonnet-5-5',
+      effort: oneOf('ULTRON_EFFORT', env.ULTRON_EFFORT ?? 'low', EFFORTS),
+    },
+    heavy:
+      heavyModel === 'off'
+        ? null
+        : { model: heavyModel, effort: oneOf('ULTRON_HEAVY_EFFORT', env.ULTRON_HEAVY_EFFORT ?? 'high', EFFORTS) },
   }
+}
+
+/** A setting that must be one of a few words, refused at startup with the choices named. */
+function oneOf<T extends string>(name: string, value: string, allowed: readonly T[]): T {
+  const found = allowed.find((a) => a === value)
+  if (found) return found
+  throw new Error(`${name} is "${value}", but it must be one of: ${allowed.join(', ')}`)
 }
 
 /**

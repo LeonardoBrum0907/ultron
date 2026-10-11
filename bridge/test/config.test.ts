@@ -9,6 +9,9 @@ test('defaults: Sonnet voice at low effort, Opus heavy at high, read-only', () =
     lang: 'pt-BR',
     allowWrites: false,
     brain: {
+      kind: 'claude',
+      url: null,
+      key: null,
       voice: { model: 'claude-sonnet-5-5', effort: 'low' },
       heavy: { model: 'claude-opus-5-5', effort: 'high' },
     },
@@ -41,4 +44,28 @@ test('ULTRON_HEAVY_MODEL=off removes the subagent', () => {
 
 test('only "1" turns a switch on', () => {
   assert.equal(readBridgeConfig({ ULTRON_ALLOW_WRITES: 'true' }).allowWrites, false)
+})
+
+test('ULTRON_BRAIN only knows claude for now, and says so', () => {
+  assert.equal(readBridgeConfig({ ULTRON_BRAIN: 'claude' }).brain.kind, 'claude')
+  assert.throws(
+    () => readBridgeConfig({ ULTRON_BRAIN: 'ollama' }),
+    { message: 'ULTRON_BRAIN is "ollama", but it must be one of: claude' },
+  )
+})
+
+test('the URL and key for an HTTP brain are read but optional', () => {
+  const config = readBridgeConfig({ ULTRON_BRAIN_URL: 'http://localhost:11434/v1', ULTRON_BRAIN_KEY: 'sk-test' })
+  assert.equal(config.brain.url, 'http://localhost:11434/v1')
+  assert.equal(config.brain.key, 'sk-test')
+  assert.equal(readBridgeConfig({ ULTRON_BRAIN_KEY: '' }).brain.key, null)
+})
+
+test('an effort that is not a level is refused at startup', () => {
+  assert.throws(
+    () => readBridgeConfig({ ULTRON_EFFORT: 'fast' }),
+    { message: 'ULTRON_EFFORT is "fast", but it must be one of: low, medium, high, xhigh, max' },
+  )
+  assert.throws(() => readBridgeConfig({ ULTRON_HEAVY_EFFORT: 'huge' }), /ULTRON_HEAVY_EFFORT is "huge"/)
+  assert.equal(readBridgeConfig({ ULTRON_HEAVY_MODEL: 'off', ULTRON_HEAVY_EFFORT: 'huge' }).brain.heavy, null)
 })
