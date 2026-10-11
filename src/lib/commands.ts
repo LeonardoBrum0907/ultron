@@ -14,6 +14,8 @@ import { useStore, type Phase } from '../store'
 import { clearLog, log } from './log'
 import { dustLevel, setDustLevel } from './dust'
 import { elevenVoiceId, setElevenVoiceId } from './tts'
+import { mind } from './mind'
+import { toneNote } from './tone'
 
 /** What only the app's conversation machinery can do; bound by App. */
 export type Actions = {
@@ -43,6 +45,12 @@ const PHASE_NOTE: Record<Phase, string> = {
   thinking: 'the model is working',
   tooling: 'a tool is running',
   speaking: 'answering aloud',
+}
+
+/** 0..1 as a ten-step bar and a percentage, for the mood readout. */
+const bar = (v: number) => {
+  const n = Math.round(Math.max(0, Math.min(1, v)) * 10)
+  return `${'█'.repeat(n)}${'·'.repeat(10 - n)} ${String(Math.round(v * 100)).padStart(3)}%`
 }
 
 const TEST_LINE = 'Teste de voz. Se você está me ouvindo, a voz está funcionando.'
@@ -274,6 +282,46 @@ const COMMANDS: Command[] = [
         return out('speaking')
       }
       out(`unknown: voice ${sub} (help voice)`, 'warn')
+    },
+  },
+  {
+    name: 'mood',
+    usage: 'mood [set|reset]',
+    summary: 'his emotions, his temper and the note the next answer carries',
+    details: [
+      'mood                     each emotion as it shows now, and what lingers from before',
+      'mood set <emotion> <0-100>  push an emotion to see the figure and voice follow',
+      'mood reset               every emotion back to its rest',
+      'shows = what the figure and voice show now (value + lingering, times temper)',
+      'lingers = the background left by earlier sessions, fading over hours',
+    ],
+    complete: (i) =>
+      i === 0 ? ['set', 'reset'] : i === 1 ? Object.keys(mind.config.emotions) : [],
+    run: ([sub, name, value]) => {
+      const emotions = Object.keys(mind.config.emotions)
+      if (sub === 'reset') {
+        mind.resetMood()
+        return out('mood reset: every emotion at rest')
+      }
+      if (sub === 'set') {
+        const n = Number(value?.replace('%', ''))
+        if (!name || !emotions.includes(name) || !Number.isFinite(n) || n < 0 || n > 100) {
+          return out(`usage: mood set <${emotions.join('|')}> <0-100>`, 'warn')
+        }
+        mind.setEmotion(name, n / 100)
+        return out(`${name} set to ${Math.round(n)}% · it settles back on its own`)
+      }
+      if (sub) return out(`unknown: mood ${sub} (help mood)`, 'warn')
+      const o = mind.output()
+      const w = Math.max(...emotions.map((e) => e.length))
+      out(`${''.padEnd(w)}  shows            lingers`)
+      for (const e of emotions) {
+        out(`${e.padEnd(w)}  ${bar(o.mood[e] ?? 0)}  ${bar(o.background[e] ?? 0)}`)
+      }
+      out(`dominant  ${o.dominant}`)
+      const t = mind.config.temper
+      out(`temper    intensity ${t.intensity} · frequency ${t.frequency} · volatility ${t.volatility}`)
+      out(`next turn ${toneNote() || 'no mood note (nothing stands out)'}`)
     },
   },
   {
