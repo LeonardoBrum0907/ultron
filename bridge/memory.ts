@@ -15,8 +15,15 @@ import { join } from 'node:path'
 const DIR = process.env.ULTRON_HOME ?? join(homedir(), '.ultron')
 const FILE = join(DIR, 'conversa.json')
 
-/** @returns {{ id: string, since: string, turns: number } | null} */
-export function savedConversation() {
+/** The conversation to resume, as kept in ~/.ultron/conversa.json. */
+export interface SavedConversation {
+  id: string
+  /** When it began, as an ISO date. */
+  since: string
+  turns: number
+}
+
+export function savedConversation(): SavedConversation | null {
   try {
     const saved = JSON.parse(readFileSync(FILE, 'utf8'))
     return typeof saved?.id === 'string' && saved.id ? saved : null
@@ -25,7 +32,7 @@ export function savedConversation() {
   }
 }
 
-function write(data) {
+function write(data: SavedConversation): void {
   mkdirSync(DIR, { recursive: true })
   writeFileSync(FILE, JSON.stringify(data, null, 2))
 }
@@ -35,7 +42,7 @@ function write(data) {
  * `continuing` says this session resumed the saved one, which keeps its start
  * date and turn count even if the SDK handed out a new id for it.
  */
-export function rememberConversation(id, { turn = false, continuing = false } = {}) {
+export function rememberConversation(id: string, { turn = false, continuing = false } = {}): void {
   const saved = savedConversation()
   const same = saved != null && (saved.id === id || continuing)
   write({
@@ -45,6 +52,6 @@ export function rememberConversation(id, { turn = false, continuing = false } = 
   })
 }
 
-export function forgetConversation() {
+export function forgetConversation(): void {
   rmSync(FILE, { force: true })
 }

@@ -23,3 +23,6 @@ Refactors in progress and known traps. Add a line when you find one; remove it w
   goes to TypeScript. Design in the project's `ultron-brain/arquitetura.md`.
 - Bridge to TypeScript, a module at a time. `.mjs` files still left are
   imported by `.ts` ones unchecked (`allowJs` in `tsconfig.bridge.json`).
+  Still `.mjs`: `server.mjs` (the HTTP routes), `chrome.mjs`, `page.mjs`,
+  `net.mjs`, `shell.mjs`, `auth.mjs`. Each needs characterization tests of its
+  routes first, and `auth.mjs` and `shell.mjs` need Léo's OK (AGENTS.md).

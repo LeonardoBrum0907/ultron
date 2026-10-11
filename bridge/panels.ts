@@ -1,4 +1,4 @@
-import { defineTool, toolServer } from './tools/tool.ts'
+import { defineTool, toolServer, type ToolResult } from './tools/tool.ts'
 import { z } from 'zod'
 import { probeUrl } from './page.mjs'
 
@@ -313,11 +313,28 @@ the bytes — it does not know whether the user asked to read this or merely to
 see it, what is already on screen, or whether the point was the picture or the
 argument. You know those things. Overrule it whenever you have reason to.`
 
+/** One blade, as the browser draws it: the bridge sends `{ type: 'blade', blade }`. */
+export interface Blade {
+  id: string
+  title: string
+  kind: string
+  url?: string
+  images?: string[]
+  html?: string
+  mode?: string
+  size: string
+  hold: string
+}
+
 /**
- * @param {(panel: object) => void} emit - pushes the panel to the browser
- * @param {(blade: object) => void} emitBlade - pushes a blade to the browser
+ * The `display`, `blade` and `probe_url` tools. Both `display` and `blade`
+ * open blades now (see below), so there is no panel emitter any more.
+ *
+ * @param emitBlade - pushes a blade to the browser
+ * @example
+ *   const hud = displayServer((blade) => send({ type: 'blade', blade }))
  */
-export function displayServer(emit, emitBlade) {
+export function displayServer(emitBlade: (blade: Blade) => void) {
   return toolServer({
     name: 'ultron',
     version: '1.0.0',
@@ -395,7 +412,7 @@ export function displayServer(emit, emitBlade) {
           return refuse(`Not opened: kind "${kind}" needs a \`url\`.`)
         }
 
-        const blade = {
+        const blade: Blade = {
           id: `b${Date.now().toString(36)}-${(seq++).toString(36)}`,
           title: String(args.title ?? '').trim() || 'DISPLAY',
           kind,
@@ -426,4 +443,4 @@ export function displayServer(emit, emitBlade) {
   })
 }
 
-const refuse = (text) => ({ isError: true, content: [{ type: 'text', text }] })
+const refuse = (text: string): ToolResult => ({ isError: true, content: [{ type: 'text', text }] })

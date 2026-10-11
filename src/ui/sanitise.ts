@@ -189,7 +189,7 @@ function hardenMedia(root: Element) {
  * second reason a prefix test would not do.
  *
  * Kept in step with the list in the `display` tool description
- * (bridge/panels.mjs). A name there that is missing here is silently stripped,
+ * (bridge/panels.ts). A name there that is missing here is silently stripped,
  * which is the failure mode we want but not one the model can diagnose.
  */
 const ALLOWED_CLASSES = new Set([

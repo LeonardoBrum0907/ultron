@@ -4,7 +4,7 @@
  * It used to be built per connection and closed with it, so a reload or a
  * dropped Wi-Fi wiped Ultron's memory while the transcript still showed it.
  * Now it is built once, on first use, resumes the saved session from disk
- * (bridge/memory.mjs) and is only ever replaced by `memory reset` or by the
+ * (bridge/memory.ts) and is only ever replaced by `memory reset` or by the
  * brain itself failing.
  *
  * Nothing here knows which model is thinking: it talks to a Brain
@@ -17,7 +17,7 @@ import type { ToolPolicy } from './policy.ts'
 import type { AskApp, OwnToolsIo } from './tools/own.ts'
 import type { ToolServer } from './tools/tool.ts'
 
-/** Which conversation to resume, kept across restarts (bridge/memory.mjs). */
+/** Which conversation to resume, kept across restarts (bridge/memory.ts). */
 export interface ConversationMemory {
   saved(): { id: string } | null
   remember(id: string, how: { turn?: boolean; continuing?: boolean }): void

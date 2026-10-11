@@ -1,4 +1,4 @@
-import { defineTool, toolServer } from './tools/tool.ts'
+import { defineTool, toolServer, type ToolResult } from './tools/tool.ts'
 import { z } from 'zod'
 
 /**
@@ -14,7 +14,7 @@ import { z } from 'zod'
  * learns what the interface can be made to do and, more importantly, when it is
  * worth doing — so they are written as direction, not as parameter lists.
  *
- * Like panels.mjs this runs in-process, so a handler pushes straight down the
+ * Like panels.ts this runs in-process, so a handler pushes straight down the
  * open WebSocket. Every handler emits exactly one message, matching the
  * bridge -> browser contract: { type: 'ui', op, args }.
  */
@@ -26,14 +26,14 @@ import { z } from 'zod'
  * accept the loose forms and `.catch()` swallows the rest as absent. The worst
  * outcome of a bad value is that it is ignored.
  */
-const looseBool = (note) =>
+const looseBool = (note: string) =>
   z
     .union([z.boolean(), z.string(), z.number()])
     .optional()
     .catch(undefined)
     .describe(note)
 
-const colour = (note) =>
+const colour = (note: string) =>
   z.union([z.string(), z.null()]).optional().catch(undefined).describe(note)
 
 const FALSEY = new Set(['false', '0', 'no', 'off', 'hide', 'hidden', 'none'])
@@ -41,7 +41,7 @@ const FALSEY = new Set(['false', '0', 'no', 'off', 'hide', 'hidden', 'none'])
 /** Words that mean "stop overriding this and follow the phase again". */
 const AUTOMATIC = new Set(['auto', 'default', 'none', 'null', 'reset', 'clear', 'stock'])
 
-function toBool(value) {
+function toBool(value: unknown): boolean | undefined {
   if (value === undefined || value === null) return undefined
   if (typeof value === 'boolean') return value
   if (typeof value === 'number') return value !== 0
@@ -51,7 +51,7 @@ function toBool(value) {
 }
 
 /** Returns null for "follow the phase", undefined for "not mentioned". */
-function toColour(value) {
+function toColour(value: unknown): string | null | undefined {
   if (value === undefined) return undefined
   if (value === null) return null
   const s = String(value).trim()
@@ -60,21 +60,21 @@ function toColour(value) {
 }
 
 /** Only real values reach the patch, so a deep merge never clears by accident. */
-function put(target, key, value) {
+function put(target: Record<string, unknown>, key: string, value: unknown) {
   if (value !== undefined) target[key] = value
   return target
 }
 
-const has = (obj) => Object.keys(obj).length > 0
+const has = (obj: object) => Object.keys(obj).length > 0
 
-const ok = (text) => ({ content: [{ type: 'text', text }] })
+const ok = (text: string): ToolResult => ({ content: [{ type: 'text', text }] })
 
 /**
  * The phase list is the store's `Phase` union, and the notes are what each one
  * means on screen — the model is picking colours for states it never sees, so
  * naming the moment is worth more than naming the constant.
  */
-const PHASE_NOTES = {
+const PHASE_NOTES: Record<string, string> = {
   offline: 'before the user has unlocked audio',
   boot: 'the startup sequence',
   dormant: 'powered down, waiting for the wake word',
@@ -170,9 +170,11 @@ Call it when the user asks for normal, and call it yourself when whatever
 justified a change is over. It is never the wrong thing to do.`
 
 /**
- * @param {(op: string, args: object) => void} emit - pushes one ui message
+ * @param emit - pushes one ui message
+ * @example
+ *   const ui = uiServer((op, args) => send({ type: 'ui', op, args }))
  */
-export function uiServer(emit) {
+export function uiServer(emit: (op: string, args: object) => void) {
   return toolServer({
     name: 'ultron_ui',
     version: '1.0.0',
@@ -185,11 +187,11 @@ export function uiServer(emit) {
     alwaysLoad: true,
     tools: [
       defineTool('ui_theme', THEME_DESCRIPTION, themeSchema, async (args) => {
-        const patch = {}
+        const patch: Record<string, unknown> = {}
         put(patch, 'accent', toColour(args.accent))
         put(patch, 'background', toColour(args.background))
 
-        const palette = {}
+        const palette: Record<string, string> = {}
         for (const [phase, value] of Object.entries(args.phase_colors ?? {})) {
           // A phase colour has no "unset" in the contract — it is a string or
           // it is absent — so a null here is dropped rather than written.
@@ -204,7 +206,7 @@ export function uiServer(emit) {
       }),
 
       defineTool('ui_chrome', CHROME_DESCRIPTION, chromeSchema, async (args) => {
-        const chrome = {}
+        const chrome: Record<string, unknown> = {}
         put(chrome, 'transcript', toBool(args.transcript))
 
         if (!has(chrome)) return ok('No change — nothing was named.')
