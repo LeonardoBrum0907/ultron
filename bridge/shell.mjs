@@ -22,19 +22,23 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 
-export const SHELL_ENABLED = process.env.ULTRON_ALLOW_SHELL === '1'
+// Every setting is read when it is used, never at import: this module is
+// imported before server.mjs loads .env.local, so a value read up here would
+// miss everything set in that file.
+const enabled = () => process.env.ULTRON_ALLOW_SHELL === '1'
 
 const GIT_BASH = ['C:\\Program Files\\Git\\bin\\bash.exe', 'C:\\Program Files (x86)\\Git\\bin\\bash.exe']
 
-export const SHELL_PATH =
+const shellPath = () =>
   process.env.ULTRON_SHELL ||
   (process.platform === 'win32' ? (GIT_BASH.find((p) => existsSync(p)) ?? 'bash.exe') : 'bash')
 
 /** Where commands run; moved by `cd`. Starts in the folder the bridge was started from. */
-let cwd = process.env.ULTRON_SHELL_CWD || process.cwd()
+let cwd = null
+const here = () => (cwd ??= process.env.ULTRON_SHELL_CWD || process.cwd())
 
 /** Commands are cut off after this long unless the page stops them first. */
-const MAX_MS = Number(process.env.ULTRON_SHELL_TIMEOUT_MS ?? 10 * 60 * 1000)
+const maxMs = () => Number(process.env.ULTRON_SHELL_TIMEOUT_MS ?? 10 * 60 * 1000)
 
 /** Marks the trailer the wrapper prints after the command: cwd and exit code. */
 const SEP = '\x1e'
@@ -60,12 +64,12 @@ function killTree(child) {
 }
 
 export function shellInfo() {
-  return { enabled: SHELL_ENABLED, shell: SHELL_PATH, cwd }
+  return { enabled: enabled(), shell: shellPath(), cwd: here() }
 }
 
 export async function handleShell(req, res, cors) {
   const json = { ...cors, 'content-type': 'application/json' }
-  if (!SHELL_ENABLED) {
+  if (!enabled()) {
     res.writeHead(403, json)
     return res.end(JSON.stringify({ error: 'shell is off: set ULTRON_ALLOW_SHELL=1 in .env.local' }))
   }
@@ -101,7 +105,8 @@ export async function handleShell(req, res, cors) {
     `__ultron_ec=$?\n` +
     `printf '${SEP}%s${SEP}%d' "$(pwd -W 2>/dev/null || pwd)" "$__ultron_ec"\n`
 
-  if (!existsSync(cwd)) cwd = homedir()
+  if (!existsSync(here())) cwd = homedir()
+  const SHELL_PATH = shellPath()
   const child = spawn(SHELL_PATH, ['-lc', script], {
     cwd,
     env: { ...process.env, TERM: 'dumb', NO_COLOR: '1', FORCE_COLOR: '0', GIT_PAGER: 'cat', PAGER: 'cat' },
@@ -129,7 +134,7 @@ export async function handleShell(req, res, cors) {
   child.stderr.setEncoding('utf8')
   child.stderr.on('data', (d) => send({ e: d }))
 
-  const timer = setTimeout(() => killTree(child), MAX_MS)
+  const timer = setTimeout(() => killTree(child), maxMs())
   // The panel's `kill`, or the page going away.
   res.on('close', () => {
     killTree(child)
