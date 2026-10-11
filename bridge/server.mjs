@@ -28,6 +28,7 @@ import { createHash } from 'node:crypto'
 import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
+import { handleShell, shellInfo } from './shell.mjs'
 
 // The same .env.local the Vite app reads, so the ElevenLabs key and the
 // ULTRON_* settings can live in one file instead of the shell. Variables
@@ -824,8 +825,15 @@ const handleRequest = async (req, res) => {
         tts: eleven && !ttsSpent,
         stt: eleven && STT_ENGINE === 'elevenlabs',
         lang: LANG,
+        shell: shellInfo(),
       }),
     )
+  }
+
+  // The L panel's `!` commands (bridge/shell.mjs). Off unless
+  // ULTRON_ALLOW_SHELL=1, and only ever for this machine.
+  if (req.method === 'POST' && req.url === '/shell') {
+    return handleShell(req, res, cors)
   }
 
   // The real ElevenLabs balance, for the page's log panel. Needs a key allowed

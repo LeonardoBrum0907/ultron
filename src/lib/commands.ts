@@ -342,7 +342,110 @@ const COMMANDS: Command[] = [
     summary: 'empty the log',
     run: () => clearLog(),
   },
+  {
+    name: '!',
+    usage: '!<command>',
+    summary: 'run a line in the shell on this machine (Git Bash on Windows)',
+    details: [
+      '! git status, ! npm run build, ! cd ../laya-setup',
+      'The folder carries over between commands, as in a terminal.',
+      'No interactive programs (vim, password prompts). kill stops the running one.',
+      '! on its own shows the shell, the folder and whether it is switched on.',
+      'Off unless the bridge has ULTRON_ALLOW_SHELL=1 in .env.local.',
+    ],
+    run: () => {},
+  },
+  {
+    name: 'kill',
+    usage: 'kill',
+    summary: 'stop the ! command that is running',
+    run: () => {
+      if (!running) return out('nothing is running')
+      running.abort()
+      out('killed')
+    },
+  },
 ]
+
+/** The ! command in flight, so kill can stop it and a second one waits its turn. */
+let running: AbortController | null = null
+
+/** Colour and cursor codes, which TERM=dumb does not stop every tool sending. */
+// eslint-disable-next-line no-control-regex
+const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\r(?!\n)/g
+
+async function runShell(command: string): Promise<void> {
+  if (!command) {
+    try {
+      const h = (await (await fetch(`${BRIDGE_HTTP_URL}/health`)).json()) as {
+        shell?: { enabled: boolean; shell: string; cwd: string }
+      }
+      if (!h.shell) return out('this bridge has no shell (restart it on this branch)', 'warn')
+      out(`shell  ${h.shell.shell}`)
+      out(`folder ${h.shell.cwd}`)
+      return out(
+        h.shell.enabled ? 'on · !<command> runs it' : 'off · set ULTRON_ALLOW_SHELL=1 in .env.local and restart the bridge',
+        h.shell.enabled ? 'info' : 'warn',
+      )
+    } catch {
+      return out('bridge unreachable', 'error')
+    }
+  }
+  if (running) return out('a command is still running · kill stops it', 'warn')
+  const ctrl = new AbortController()
+  running = ctrl
+  // Output comes in chunks that split lines anywhere; a line is logged once whole.
+  const partial = { o: '', e: '' }
+  const emit = (stream: 'o' | 'e', text: string, flush = false) => {
+    const all = (partial[stream] + text).replace(ANSI, '')
+    const lines = all.split(/\r?\n/)
+    // The last piece is a line still being written, unless the command is done.
+    const rest = lines.pop() ?? ''
+    partial[stream] = flush ? '' : rest
+    if (flush && rest) lines.push(rest)
+    for (const l of lines) out(l)
+  }
+  try {
+    const res = await fetch(`${BRIDGE_HTTP_URL}/shell`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ command }),
+      signal: ctrl.signal,
+    })
+    if (!res.ok || !res.body) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string }
+      return out(j.error ?? `shell refused (${res.status})`, 'error')
+    }
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+    let buf = ''
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buf += value
+      let nl
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const msg = JSON.parse(buf.slice(0, nl)) as {
+          o?: string
+          e?: string
+          done?: { code: number; cwd: string }
+        }
+        buf = buf.slice(nl + 1)
+        if (msg.o) emit('o', msg.o)
+        if (msg.e) emit('e', msg.e)
+        if (msg.done) {
+          emit('o', '', true)
+          emit('e', '', true)
+          if (msg.done.code !== 0) out(`exit ${msg.done.code}`, 'error')
+        }
+      }
+    }
+  } catch (err) {
+    if (ctrl.signal.aborted) return
+    out(`shell: ${err instanceof Error ? err.message : err}`, 'error')
+  } finally {
+    if (running === ctrl) running = null
+  }
+}
 
 const split = (line: string) => line.trim().split(/\s+/).filter(Boolean)
 
@@ -351,6 +454,7 @@ export async function runCommand(line: string): Promise<void> {
   const words = split(line)
   if (!words.length) return
   out(`› ${line.trim()}`)
+  if (line.trim().startsWith('!')) return runShell(line.trim().slice(1).trim())
   const [name, ...args] = words
   const c = COMMANDS.find((x) => x.name === name.toLowerCase())
   if (!c) return out(`unknown command: ${name} · type help`, 'warn')
