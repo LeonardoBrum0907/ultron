@@ -13,6 +13,7 @@ import { BRIDGE_HTTP_URL } from '../config'
 import { clearLog, compact, log, useLog } from '../lib/log'
 import { useStore, type Phase } from '../store'
 import { dustLevel, setDustLevel } from '../lib/dust'
+import { EDGES, useFloat } from './useFloat'
 import { completeLine, loadHistory, runCommand, saveHistory } from '../lib/commands'
 
 /** The phase, as the status line on the main screen used to say it. */
@@ -58,6 +59,12 @@ export function LogPanel() {
   const cursor = useRef(history.current.length)
   const draft = useRef('')
   const [focusAsked, setFocusAsked] = useState(0)
+  // A loose window, moved by its title and resized from its edges. It starts
+  // where the docked panel used to be: down the right side.
+  const win = useFloat('ultron.logWindow', () => {
+    const w = Math.min(512, window.innerWidth - 32)
+    return { x: window.innerWidth - w - 16, y: 16, w, h: window.innerHeight - 32 }
+  })
 
   /** Open or close the panel, remembered across reloads. */
   const show = (next: boolean | ((o: boolean) => boolean)) =>
@@ -119,12 +126,6 @@ export function LogPanel() {
     }
   }, [open, totals.elevenCalls])
 
-  // Lets the text box step aside instead of sliding under the panel.
-  useEffect(() => {
-    document.body.classList.toggle('lg-open', open)
-    return () => document.body.classList.remove('lg-open')
-  }, [open])
-
   if (!open) return null
 
   const submit = () => {
@@ -156,12 +157,29 @@ export function LogPanel() {
         : '…'
 
   return (
-    <aside className="lg" aria-label="Log de eventos">
-      <div className="lg-head">
+    <aside
+      className="lg"
+      aria-label="Log de eventos"
+      style={{ left: win.rect.x, top: win.rect.y, width: win.rect.w, height: win.rect.h }}
+    >
+      {EDGES.map((edge) => (
+        <div key={edge} className={`lg-edge lg-edge-${edge}`} onPointerDown={win.onResize(edge)} />
+      ))}
+      <div
+        className="lg-head"
+        onPointerDown={win.onDrag}
+        onDoubleClick={win.reset}
+        title="Arraste para mover · duplo clique volta ao lugar"
+      >
         <span>LOG · L ou Esc fecha</span>
-        <button type="button" className="lg-clear" onClick={clearLog}>
-          limpar
-        </button>
+        <span className="lg-actions">
+          <button type="button" className="lg-clear" onClick={clearLog}>
+            limpar
+          </button>
+          <button type="button" className="lg-close" onClick={() => show(false)} aria-label="Fechar">
+            ×
+          </button>
+        </span>
       </div>
       {/* What used to sit round the edges of the main screen: the phase, the
           voice download while it boots, and which systems are linked. */}
