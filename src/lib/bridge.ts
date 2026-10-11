@@ -1,6 +1,6 @@
 import type { AskHandlers } from './anthropic'
 import type { Blade, Panel } from '../store'
-import { BRIDGE_WS_URL } from '../config'
+import { BRIDGE_HTTP_URL, BRIDGE_WS_URL } from '../config'
 import { addClaude, clip, compact, log } from './log'
 
 /**
@@ -10,11 +10,11 @@ import { addClaude, clip, compact, log } from './log'
  * brain is behind it. The difference is what's reachable: this one runs on your
  * machine, so every MCP server in your Claude Code config is in play.
  *
- * The socket is the session. The bridge holds one Claude Agent SDK query per
- * connection and the whole conversation lives inside it, so a dropped socket
- * silently wipes ULTRON's memory of the exchange while the transcript on screen
- * still shows it. That is why the reconnect below is loud rather than
- * invisible: `watchConnection` exists so the HUD can say so.
+ * The socket is not the session. The bridge holds one conversation for every
+ * app connected to it (this tab, the desktop window, a phone) and keeps it
+ * across reloads and restarts, so a dropped socket only costs the turn that
+ * was in flight. What another app asks, and the answer, arrive here too, as
+ * `watchEcho` lines to show without speaking.
  */
 
 /** claude-sonnet-5-5 → sonnet-5-5: the log line has little room. */
@@ -62,8 +62,70 @@ type Frame = {
   servers?: Array<string | { name?: string }>
 }
 
-/** Every question gets an id so its answer can be told from anyone else's. */
+/** Every question gets an id so its answer can be told from anyone else's,
+ *  including another device's: the tag makes ids unique across apps. */
 let askSeq = 0
+const clientTag = Math.random().toString(36).slice(2, 8)
+const mine = (id?: string) => Boolean(id?.startsWith(`${clientTag}-`))
+
+/**
+ * What another app said to Ultron, and what he answered it, so every screen
+ * shows the same conversation. Only shown: the voice stays on the device that
+ * asked.
+ */
+let onEcho: ((role: 'user' | 'ultron', text: string) => void) | null = null
+export function watchEcho(fn: (role: 'user' | 'ultron', text: string) => void) {
+  onEcho = fn
+}
+
+/**
+ * The bridge wants a password before this page may talk to it. Only ever
+ * fires on a page opened from another device (docs/remote.md).
+ */
+let onAuth: ((enabled: boolean) => void) | null = null
+export function watchAuth(fn: (enabled: boolean) => void) {
+  onAuth = fn
+}
+
+/** Send the password; on success the bridge sets a cookie and we dial again. */
+export async function login(password: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${BRIDGE_HTTP_URL}/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
+    if (res.ok) {
+      attempt = 0
+      void connect().catch(() => {})
+      return null
+    }
+    const body = (await res.json().catch(() => ({}))) as { error?: string }
+    return body.error ?? `login failed (${res.status})`
+  } catch {
+    return 'bridge unreachable'
+  }
+}
+
+class AuthNeeded extends Error {}
+
+/** Whether this page has to log in first. Local pages never do. */
+async function checkAuth(): Promise<void> {
+  if (BRIDGE_WS_URL.startsWith('ws://localhost')) return
+  let auth: { ok?: boolean; enabled?: boolean } = {}
+  try {
+    auth = await (await fetch(`${BRIDGE_HTTP_URL}/auth`)).json()
+  } catch {
+    return // let the socket report the real problem
+  }
+  if (auth.ok) return
+  onAuth?.(auth.enabled !== false)
+  throw new AuthNeeded(
+    auth.enabled === false
+      ? 'Remote access is off on the PC: set ULTRON_PASSWORD in .env.local.'
+      : 'Log in to talk to Ultron from this device.',
+  )
+}
 
 let socket: WebSocket | null = null
 let connecting: Promise<WebSocket> | null = null
@@ -129,9 +191,9 @@ export function watchUi(fn: (op: string, args: any) => void) {
  * Connection state, for the UI.
  *
  *   'open'        — first connection of the page.
- *   'lost'        — the socket died. The agent session died with it, so
- *                   everything said so far is gone as far as ULTRON knows.
- *   'reconnected' — we're back, on a fresh session with no memory of the above.
+ *   'lost'        — the socket died. The conversation lives on in the bridge;
+ *                   only an answer in flight is lost.
+ *   'reconnected' — we're back, in the same conversation.
  */
 export type ConnectionState = 'open' | 'lost' | 'reconnected'
 let onConnection: ((state: ConnectionState) => void) | null = null
@@ -203,6 +265,10 @@ function dispatch(ws: WebSocket) {
       onServers?.(servers)
       log('bridge', `pronto · ${servers.length} servidores MCP`)
       firstReady.resolve()
+    } else if (msg.type === 'heard' && msg.text && !mine(msg.ask)) {
+      onEcho?.('user', msg.text)
+    } else if (msg.type === 'done' && msg.ask && !mine(msg.ask) && msg.text) {
+      onEcho?.('ultron', msg.text)
     } else if (msg.type === 'panel' && msg.panel) {
       onPanel?.(msg.panel)
     } else if (msg.type === 'blade' && msg.blade) {
@@ -244,75 +310,82 @@ function connect(): Promise<WebSocket> {
   firstReady = deferred()
 
   connecting = new Promise<WebSocket>((resolve, reject) => {
-    const ws = new WebSocket(BRIDGE_WS_URL)
-    let settled = false
-
-    /**
-     * Every terminal path runs through here, and clearing `connecting` is the
-     * whole point. The timeout used to reject without clearing it, which
-     * bricked the client: the fast path above hands that same dead promise to
-     * every later caller, so one slow start cost you a page reload.
-     */
-    const settle = (err: Error | null) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
+    void checkAuth().then(() => dial(resolve, reject), (err) => {
       connecting = null
-      if (err) reject(err)
-      else resolve(ws)
-    }
-
-    const timer = setTimeout(() => {
-      ws.close()
-      settle(new Error('Bridge not responding — is `npm run bridge` running?'))
-    }, 6000)
-
-    ws.onopen = () => {
-      socket = ws
-      attempt = 0
-      dispatch(ws)
-      settle(null)
-      log('bridge', everConnected ? 'reconectado' : 'conectado')
-      onConnection?.(everConnected ? 'reconnected' : 'open')
-      everConnected = true
-    }
-    ws.onerror = () => {
-      /**
-       * The browser will not tell us why.
-       *
-       * A refused handshake and a rejected Origin arrive here identically — no
-       * status, no reason, just `error` — and the two have completely different
-       * fixes. The old message named only one of them, and confidently: it said
-       * to start the bridge. When the real cause was the page being served on a
-       * port outside the range the bridge trusts, that advice sent everyone to
-       * inspect a process that was running perfectly the whole time.
-       *
-       * So say both, and put the actual port in front of them, since that is
-       * the fact that distinguishes the two cases at a glance.
-       */
-      settle(
-        new Error(
-          `Cannot reach the bridge at ${BRIDGE_WS_URL}. Either it is not ` +
-            'running (start it with `npm start`), or this page is on a port it ' +
-            `refuses — it accepts localhost:5173-5199 and 4173-4199, and this ` +
-            `page is on ${location.port || '80'}.`,
-        ),
-      )
-    }
-    ws.onclose = () => {
-      // A close before open is just a failed dial; after open it's a lost
-      // session, and the two want different handling.
-      settle(new Error('The bridge closed the connection.'))
-      if (socket === ws) {
-        socket = null
-        log('bridge', 'conexão perdida', 'warn')
-        onConnection?.('lost')
-        scheduleReconnect()
-      }
-    }
+      reject(err)
+    })
   })
 
   return connecting
+}
+
+function dial(resolve: (ws: WebSocket) => void, reject: (err: Error) => void): void {
+  const ws = new WebSocket(BRIDGE_WS_URL)
+  let settled = false
+
+  /**
+   * Every terminal path runs through here, and clearing `connecting` is the
+   * whole point. The timeout used to reject without clearing it, which
+   * bricked the client: the fast path above hands that same dead promise to
+   * every later caller, so one slow start cost you a page reload.
+   */
+  const settle = (err: Error | null) => {
+    if (settled) return
+    settled = true
+    clearTimeout(timer)
+    connecting = null
+    if (err) reject(err)
+    else resolve(ws)
+  }
+
+  const timer = setTimeout(() => {
+    ws.close()
+    settle(new Error('Bridge not responding — is `npm run bridge` running?'))
+  }, 6000)
+
+  ws.onopen = () => {
+    socket = ws
+    attempt = 0
+    dispatch(ws)
+    settle(null)
+    log('bridge', everConnected ? 'reconectado' : 'conectado')
+    onConnection?.(everConnected ? 'reconnected' : 'open')
+    everConnected = true
+  }
+  ws.onerror = () => {
+    /**
+     * The browser will not tell us why.
+     *
+     * A refused handshake and a rejected Origin arrive here identically — no
+     * status, no reason, just `error` — and the two have completely different
+     * fixes. The old message named only one of them, and confidently: it said
+     * to start the bridge. When the real cause was the page being served on a
+     * port outside the range the bridge trusts, that advice sent everyone to
+     * inspect a process that was running perfectly the whole time.
+     *
+     * So say both, and put the actual port in front of them, since that is
+     * the fact that distinguishes the two cases at a glance.
+     */
+    settle(
+      new Error(
+        `Cannot reach the bridge at ${BRIDGE_WS_URL}. Either it is not ` +
+          'running (start it with `npm start`), or this page is on a port it ' +
+          `refuses — it accepts localhost:5173-5199 and 4173-4199, and this ` +
+          `page is on ${location.port || '80'}.`,
+      ),
+    )
+  }
+  ws.onclose = () => {
+    // A close before open is just a failed dial; after open it's a lost
+    // session, and the two want different handling.
+    settle(new Error('The bridge closed the connection.'))
+    if (socket === ws) {
+      socket = null
+      log('bridge', 'conexão perdida', 'warn')
+      onConnection?.('lost')
+      scheduleReconnect()
+    }
+  }
 }
 
 /** Open the socket early so the first "Hey Ultron" isn't waiting on a handshake. */
@@ -393,7 +466,7 @@ export async function ask(
     return { text: '', tools: [] }
   }
 
-  const id = `a${++askSeq}`
+  const id = `${clientTag}-a${++askSeq}`
   const tools: string[] = []
   let text = ''
 

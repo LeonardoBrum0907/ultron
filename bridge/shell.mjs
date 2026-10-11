@@ -18,6 +18,7 @@
  * Output streams back as NDJSON lines: {o: text} for stdout, {e: text} for
  * stderr, then {done: {code, cwd}}.
  */
+import { isRemote } from './auth.mjs'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -73,7 +74,8 @@ export async function handleShell(req, res, cors) {
     res.writeHead(403, json)
     return res.end(JSON.stringify({ error: 'shell is off: set ULTRON_ALLOW_SHELL=1 in .env.local' }))
   }
-  if (!LOOPBACK.has(req.socket.remoteAddress) || !req.headers.origin) {
+  // isRemote also catches the /bridge proxy, which connects from loopback.
+  if (!LOOPBACK.has(req.socket.remoteAddress) || isRemote(req) || !req.headers.origin) {
     res.writeHead(403, json)
     return res.end(JSON.stringify({ error: 'shell only answers this machine' }))
   }

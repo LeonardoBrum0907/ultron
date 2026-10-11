@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Figure } from './ui/Figure'
 import { TextBox } from './ui/TextBox'
+import { Login } from './ui/Login'
 import { LogPanel } from './ui/LogPanel'
 import { bindActions } from './lib/commands'
 import { clip, log } from './lib/log'
@@ -25,6 +26,8 @@ import {
   watchCapture,
   watchUi,
   watchConnection,
+  watchEcho,
+  watchAuth,
   connectedLabels,
   usingBridge,
   type Msg,
@@ -86,6 +89,8 @@ export default function App() {
    * the phase, the speaker, or the busy state on its way to the floor.
    */
   const turn = useRef(0)
+  /** On another device the bridge wants a password before anything else. */
+  const [auth, setAuth] = useState<'needed' | 'off' | null>(null)
   const booting = useRef(false)
   /** Bumped by every power off, so a boot still sleeping through the assembly
    *  when he was switched off does not wake him at the end of it. */
@@ -526,18 +531,21 @@ export default function App() {
           console.warn('[ultron] unknown ui op:', op, args)
       }
     })
-    // In bridge mode the conversation lives in the agent session, which is tied
-    // to the socket — so a drop silently wipes his memory while the transcript
-    // on screen still shows it. Better to say so than to let him quietly forget.
+    // The conversation lives in the bridge and survives the drop, so a
+    // reconnect only has to clear the warning.
     watchConnection((state) => {
       if (state === 'lost') {
         store.getState().setError('Bridge connection lost — reconnecting.')
       } else if (state === 'reconnected') {
-        store
-          .getState()
-          .setError('Bridge reconnected. The previous conversation was not kept.')
+        store.getState().setError(null)
       }
     })
+    // The same conversation, asked from another device: shown here, spoken
+    // only there.
+    watchEcho((role, text) => {
+      store.getState().pushTurn({ id: newId(), role, text })
+    })
+    watchAuth((enabled) => setAuth(enabled ? 'needed' : 'off'))
     const warming = warm().catch((err: Error) => s.setError(err.message))
 
     if (!usingBridge && !env.anthropicKey) {
@@ -821,11 +829,18 @@ export default function App() {
     <>
       <Figure hears={hears} says={says} onIgnite={() => void powerOn()} />
       <Hud />
-      <TextBox
-        onSend={onTyped}
-        onMute={onMute}
-        onMic={onMic}
-      />
+      {auth ? (
+        <Login
+          off={auth === 'off'}
+          onDone={() => {
+            setAuth(null)
+            store.getState().setError(null)
+            warm().catch((err: Error) => store.getState().setError(err.message))
+          }}
+        />
+      ) : (
+        <TextBox onSend={onTyped} onMute={onMute} onMic={onMic} />
+      )}
       <Diagnostics />
       <LogPanel />
     </>

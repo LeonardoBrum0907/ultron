@@ -325,6 +325,42 @@ const COMMANDS: Command[] = [
     },
   },
   {
+    name: 'memory',
+    usage: 'memory [reset]',
+    summary: 'the conversation he remembers, or start a new one',
+    details: [
+      'memory        since when, how many turns, how many devices are connected',
+      'memory reset  forget it: the next question starts a new conversation',
+      'The conversation lives in the bridge and survives reloads and restarts.',
+    ],
+    complete: (i) => (i === 0 ? ['reset'] : []),
+    run: async ([sub]) => {
+      if (sub && sub !== 'reset') return out(`unknown: memory ${sub} (help memory)`, 'warn')
+      try {
+        if (sub === 'reset') {
+          const res = await fetch(`${BRIDGE_HTTP_URL}/memory/reset`, { method: 'POST' })
+          if (!res.ok) return out(`memory reset failed (${res.status})`, 'error')
+          return out('memory reset: the next question starts a new conversation')
+        }
+        const m = (await (await fetch(`${BRIDGE_HTTP_URL}/memory`)).json()) as {
+          id: string | null
+          since: string | null
+          turns: number
+          devices: number
+        }
+        if (!m.id) out('no conversation yet: the next question starts one')
+        else {
+          out(`since    ${new Date(m.since ?? '').toLocaleString('pt-BR')}`)
+          out(`turns    ${m.turns}`)
+          out(`session  ${m.id}`)
+        }
+        out(`devices  ${m.devices} connected`)
+      } catch {
+        out('bridge unreachable', 'error')
+      }
+    },
+  },
+  {
     name: 'dust',
     usage: 'dust [0-100]',
     summary: 'volume of the particle sound',

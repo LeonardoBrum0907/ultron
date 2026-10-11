@@ -29,6 +29,8 @@ import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
 import { handleShell, shellInfo } from './shell.mjs'
+import { gate, handleAuth, isRemote, publicOrigin, remoteEnabled, sameOrigin } from './auth.mjs'
+import { forgetConversation, rememberConversation, savedConversation } from './memory.mjs'
 
 // The same .env.local the Vite app reads, so the ElevenLabs key and the
 // ULTRON_* settings can live in one file instead of the shell. Variables
@@ -799,7 +801,10 @@ const http = await import('node:http')
 
 const handleRequest = async (req, res) => {
   const origin = req.headers.origin
-  if (origin && !originAllowed(origin)) {
+  const remote = isRemote(req)
+  // Through the /bridge proxy the page shares the bridge's origin, which the
+  // remote gate checks instead of the local dev-port list.
+  if (origin && !(remote ? sameOrigin(req, origin) : originAllowed(origin))) {
     console.warn(`[ultron] refused http request from origin ${origin}`)
     res.writeHead(403, { vary: 'origin' })
     return res.end('forbidden')
@@ -809,6 +814,25 @@ const handleRequest = async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, cors)
     return res.end()
+  }
+
+  // Login comes before the gate: a page that is not logged in has to be able
+  // to find that out and fix it (bridge/auth.mjs).
+  const route = (req.url ?? '').split('?')[0]
+  if (route === '/auth' || route === '/login') {
+    if (await handleAuth(req, res, cors)) return
+  }
+  const gated = gate(req)
+  if (!gated.ok) {
+    res.writeHead(gated.why === 'login required' ? 401 : 403, {
+      ...cors,
+      'content-type': 'application/json',
+    })
+    return res.end(JSON.stringify({ error: gated.why }))
+  }
+
+  if (route === '/memory' || route === '/memory/reset') {
+    return handleMemory(req, res, cors)
   }
 
   if (req.method === 'GET' && req.url === '/health') {
@@ -1000,7 +1024,11 @@ const handleRequest = async (req, res) => {
     const target = asked.searchParams.get('url') ?? ''
     const mode = asked.searchParams.get('mode') === 'live' ? 'live' : 'reader'
     try {
-      const page = await renderPage(target, mode, `http://localhost:${PORT}`)
+      const page = await renderPage(
+        target,
+        mode,
+        isRemote(req) ? publicOrigin(req) : `http://localhost:${PORT}`,
+      )
       res.writeHead(200, { ...cors, ...page.headers })
       return res.end(page.body)
     } catch (err) {
@@ -1258,7 +1286,12 @@ const wss = new WebSocketServer({
       console.warn(`[ultron] rejected websocket on path ${path}`)
       return done(false, 403, 'Forbidden')
     }
-    if (!originAllowed(origin)) {
+    const gated = gate(req)
+    if (!gated.ok) {
+      console.warn(`[ultron] rejected remote websocket: ${gated.why}`)
+      return done(false, gated.why === 'login required' ? 401 : 403, 'Forbidden')
+    }
+    if (!gated.remote && !originAllowed(origin)) {
       console.warn(
         `[ultron] rejected websocket from origin ${origin ?? '(none)'}` +
           ' — set ULTRON_ALLOWED_ORIGINS to permit it',
@@ -1268,9 +1301,16 @@ const wss = new WebSocketServer({
     done(true)
   },
 })
+// Anything that does not arrive straight from this machine, the proxy and
+// the local network alike, goes through the password gate in bridge/auth.mjs.
 server.listen(PORT)
 
 console.log(`[ultron] bridge listening on ws://localhost:${PORT}`)
+console.log(
+  remoteEnabled()
+    ? '[ultron] remote access ON — other devices log in with ULTRON_PASSWORD through /bridge'
+    : '[ultron] remote access off — set ULTRON_PASSWORD to reach Ultron from other devices',
+)
 console.log(
   `[ultron] language ${LANG} · voice ${elevenKey() ? 'ElevenLabs' : 'browser'} · ` +
     `hearing ${elevenKey() && STT_ENGINE === 'elevenlabs' ? 'ElevenLabs Scribe' : 'browser'}`,
@@ -1313,14 +1353,35 @@ const RESULT_FAILURES = {
   default: 'The turn ended without an answer.',
 }
 
-wss.on('connection', (socket) => {
-  console.log('[ultron] client connected')
+/**
+ * Every app connected right now: the Chrome tab on this PC, the desktop
+ * window, a phone. They all share one conversation, so what one asks and what
+ * Ultron answers reaches every one of them.
+ */
+const clients = new Set()
 
-  // Answer the HUD straight away rather than making it wait for the agent's
-  // first turn. Refined later by the real init message.
-  socket.send(
-    JSON.stringify({ type: 'ready', servers: Object.keys(MCP_SERVERS) }),
-  )
+/** The servers the agent reported at init, so a later client gets them too. */
+let liveServers = null
+
+const broadcast = (msg) => {
+  const raw = JSON.stringify(msg)
+  for (const c of clients) if (c.readyState === c.OPEN) c.send(raw)
+}
+
+/**
+ * The conversation, which outlives any one socket.
+ *
+ * It used to be built per connection and closed with it, so a reload or a
+ * dropped Wi-Fi wiped Ultron's memory while the transcript still showed it.
+ * Now it is built once, on first use, resumes the saved session from disk
+ * (bridge/memory.mjs) and is only ever replaced by `memory reset` or by the
+ * agent itself failing.
+ */
+let conversation = null
+
+function startConversation() {
+  const resumeId = savedConversation()?.id ?? null
+  let initSeen = false
 
   /** Resolves the pending user message into the SDK's input generator. */
   let deliver = null
@@ -1343,9 +1404,16 @@ wss.on('connection', (socket) => {
     }
   }
 
-  const send = (msg) => {
-    if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(msg))
-  }
+  // Everything the conversation says goes to every app. Turn frames carry the
+  // id of the question, so each app knows whether the answer is its own to
+  // speak or only to show.
+  const send = broadcast
+
+  /** The app whose question is being answered: the camera is on that one. */
+  let asker = null
+  /** Whether a turn is in flight, and whether it has already been told to stop. */
+  let busy = false
+  let stopping = false
 
   /**
    * Which question the agent is currently answering.
@@ -1375,7 +1443,8 @@ wss.on('connection', (socket) => {
 
   const ask = (kind, args, timeoutMs = 20_000) =>
     new Promise((resolve, reject) => {
-      if (socket.readyState !== socket.OPEN) {
+      const socket = asker
+      if (!socket || socket.readyState !== socket.OPEN) {
         return reject(new Error('the interface is not connected'))
       }
       const id = `q${++asks}`
@@ -1384,7 +1453,7 @@ wss.on('connection', (socket) => {
         reject(new Error('the interface did not answer in time'))
       }, timeoutMs)
       waiting.set(id, { resolve, timer })
-      send({ type: kind, id, ...args })
+      socket.send(JSON.stringify({ type: kind, id, ...args }))
     })
 
   /**
@@ -1492,16 +1561,15 @@ wss.on('connection', (socket) => {
     prompt: userMessages(),
     options: {
       // Everything Claude Code has configured, plus the HUD as an in-process
-      // server. The HUD's handler closes over this socket, so a `display` call
-      // lands on screen directly — which is also why this object is built per
-      // connection rather than once.
+      // server. The HUD's handler sends to every connected app, so a `display`
+      // call lands on each screen directly.
       mcpServers: {
         ...MCP_SERVERS,
         ultron: displayServer(
           (panel) => send({ type: 'panel', panel }),
           (blade) => send({ type: 'blade', blade }),
         ),
-        // The interface controls, on the same socket. A separate key because
+        // The interface controls, sent the same way. A separate key because
         // MCP tool names are `mcp__<key>__<tool>` and one key can only carry
         // one server; the underscore in it is why decideTool and announceTool
         // both name `ultron_ui` explicitly.
@@ -1544,6 +1612,9 @@ wss.on('connection', (socket) => {
       // without this line nothing in the project has a say at all.
       model: MODEL,
       effort: EFFORT,
+      // Carry on the saved conversation. The SDK keeps the transcript on disk
+      // (persistSession is its default); this only names which one.
+      ...(resumeId ? { resume: resumeId } : {}),
       // The heavy subagent. Its tool calls go through canUseTool like any
       // other, so the write gate holds for it too.
       ...(HEAVY
@@ -1662,6 +1733,7 @@ wss.on('connection', (socket) => {
             // nothing to say — the HUD stops spinning and ULTRON stands there
             // silent. Say what happened instead.
             if (msg.subtype === 'success') {
+              if (msg.session_id) rememberConversation(msg.session_id, { turn: true, continuing: true })
               sendTurn({
                 type: 'done',
                 text: msg.result ?? '',
@@ -1696,6 +1768,8 @@ wss.on('connection', (socket) => {
             }
             // Whatever was waiting on this turn to finish can go now. This is
             // the only place a turn is genuinely over.
+            busy = false
+            stopping = false
             finishTurn?.()
             finishTurn = null
             // One turn's tool ids are never referred to again, and these
@@ -1708,11 +1782,16 @@ wss.on('connection', (socket) => {
 
           case 'system':
             if (msg.subtype === 'init') {
+              initSeen = true
+              if (msg.session_id) {
+                rememberConversation(msg.session_id, { continuing: Boolean(resumeId) })
+              }
               // Servers report 'pending' until first use — they connect
               // lazily — so only drop the ones that are actually unusable.
               const usable = (msg.mcp_servers ?? [])
                 .filter((s) => s.status !== 'needs-auth' && s.status !== 'failed')
                 .map((s) => s.name)
+              liveServers = usable
               send({ type: 'ready', servers: usable })
               console.log(`[ultron] ${usable.length} MCP servers available`)
             }
@@ -1721,17 +1800,116 @@ wss.on('connection', (socket) => {
       }
     } catch (err) {
       console.error('[ultron] session error:', err)
+      // A saved session that will not resume (deleted, or from an older
+      // Claude Code) would fail the same way on every retry. Forget it and the
+      // next question starts a new conversation; nobody asked anything yet, so
+      // there is nobody to tell.
+      if (resumeId && !initSeen) {
+        console.warn('[ultron] could not resume the saved conversation; starting a new one')
+        forgetConversation()
+        stop()
+        if (clients.size) conversationNow()
+        return
+      }
       send({ type: 'error', message: String(err?.message ?? err) })
-      // The stream is finished either way — nothing will ever be read from it
-      // again. Leaving the socket open would leave the client believing it has
-      // a working bridge, and every later question would hang for ever waiting
-      // on a pump that has already stopped. Close it so it reconnects.
-      closed = true
-      deliver?.(null)
-      session.close?.()
-      socket.close()
+      stop()
     }
   })()
+
+  function stop() {
+    closed = true
+    deliver?.(null)
+    session.close?.()
+    for (const { timer } of waiting.values()) clearTimeout(timer)
+    waiting.clear()
+    if (conversation === api) conversation = null
+  }
+
+  /** Stop the turn in flight, and let the next question wait until it has. */
+  function interrupt() {
+    if (!busy || stopping) return
+    stopping = true
+    // Held so the next question can wait for it rather than racing it.
+    const stopped = turnFinished()
+    settling = Promise.resolve(session.interrupt?.())
+      .catch(() => {})
+      .then(() =>
+        Promise.race([
+          stopped,
+          new Promise((r) => setTimeout(r, SETTLE_CAP_MS)),
+        ]),
+      )
+  }
+
+  /**
+   * A question from one of the apps.
+   *
+   * Queued behind any interrupt that is still settling. A barge-in is two
+   * messages in quick succession — interrupt, then the new question — and
+   * session.interrupt() is asynchronous. Delivering the question the instant
+   * it arrives means the agent can still be winding down the previous turn,
+   * so its last tokens are emitted after the new one has begun and land on
+   * the new turn's listener. Measured: ask "one", interrupt, ask "two", and
+   * the answer to "two" comes back as "One."
+   *
+   * A question from another app while a turn is running is the same thing as
+   * a barge-in: say something and it becomes the turn, wherever it was said.
+   */
+  function question(socket, text, id, said) {
+    interrupt()
+    void settling.then(() => {
+      if (closed) return
+      answering = id
+      asker = socket
+      busy = true
+      // The other apps show what was asked; the asker already has it.
+      for (const c of clients) {
+        if (c !== socket && c.readyState === c.OPEN) {
+          c.send(JSON.stringify({ type: 'heard', text: said, ask: id }))
+        }
+      }
+      if (deliver) {
+        const resolve = deliver
+        deliver = null
+        resolve(text)
+      } else {
+        inbox.push(text)
+      }
+    })
+  }
+
+  function reply(msg) {
+    const slot = waiting.get(msg.id)
+    if (slot) {
+      waiting.delete(msg.id)
+      clearTimeout(slot.timer)
+      slot.resolve(msg)
+    }
+  }
+
+  /** An app went away. If it was the one being answered, the camera goes too. */
+  function leave(socket) {
+    if (asker === socket) asker = null
+  }
+
+  const api = { question, interrupt, reply, leave, stop }
+  return api
+}
+
+const conversationNow = () => (conversation ??= startConversation())
+
+wss.on('connection', (socket) => {
+  console.log(`[ultron] client connected (${clients.size + 1} now)`)
+  clients.add(socket)
+
+  // Answer the HUD straight away rather than making it wait for the agent's
+  // first turn. Refined later by the real init message.
+  socket.send(
+    JSON.stringify({ type: 'ready', servers: liveServers ?? Object.keys(MCP_SERVERS) }),
+  )
+  // Started now rather than at the first question, so the saved conversation
+  // is already loaded by the time anyone speaks.
+  conversationNow()
 
   socket.on('message', (raw) => {
     let msg
@@ -1742,64 +1920,62 @@ wss.on('connection', (socket) => {
     }
 
     if (msg.type === 'ask' && typeof msg.text === 'string') {
-      /**
-       * Queued behind any interrupt that is still settling.
-       *
-       * A barge-in is two messages in quick succession — interrupt, then the
-       * new question — and session.interrupt() is asynchronous. Delivering the
-       * question the instant it arrives means the agent can still be winding
-       * down the previous turn, so its last tokens are emitted after the new
-       * one has begun and land on the new turn's listener. Measured: ask "one",
-       * interrupt, ask "two", and the answer to "two" comes back as "One."
-       *
-       * Waiting costs nothing when nothing is interrupting — the chain is an
-       * already-resolved promise — and removes the cross-talk when there is.
-       */
       // The mood the app read as the question left (src/lib/tone.ts), set in
       // front of it the way the persona is told to expect. Capped because it
       // arrives over the socket like anything else.
       const tone = typeof msg.tone === 'string' ? msg.tone.trim().slice(0, 400) : ''
       const text = tone ? `<mood>${tone}</mood>\n${msg.text}` : msg.text
       const id = typeof msg.id === 'string' ? msg.id : null
-      void settling.then(() => {
-        answering = id
-        if (deliver) {
-          const resolve = deliver
-          deliver = null
-          resolve(text)
-        } else {
-          inbox.push(text)
-        }
-      })
+      conversationNow().question(socket, text, id, msg.text)
     }
 
     if (msg.type === 'reply' && typeof msg.id === 'string') {
-      const slot = waiting.get(msg.id)
-      if (slot) {
-        waiting.delete(msg.id)
-        clearTimeout(slot.timer)
-        slot.resolve(msg)
-      }
+      conversation?.reply(msg)
     }
 
     if (msg.type === 'interrupt') {
-      // Held so the next question can wait for it rather than racing it.
-      const stopped = turnFinished()
-      settling = Promise.resolve(session.interrupt?.())
-        .catch(() => {})
-        .then(() =>
-          Promise.race([
-            stopped,
-            new Promise((r) => setTimeout(r, SETTLE_CAP_MS)),
-          ]),
-        )
+      conversation?.interrupt()
     }
   })
 
   socket.on('close', () => {
-    console.log('[ultron] client disconnected')
-    closed = true
-    deliver?.(null)
-    session.close?.()
+    clients.delete(socket)
+    conversation?.leave(socket)
+    console.log(`[ultron] client disconnected (${clients.size} left)`)
   })
 })
+
+/**
+ * GET /memory — the conversation Ultron is in, for the L panel.
+ * POST /memory/reset — start a new one. The old transcript stays in the SDK's
+ * own store on disk; Ultron just stops resuming it.
+ */
+async function handleMemory(req, res, cors) {
+  const json = { ...cors, 'content-type': 'application/json' }
+  const route = (req.url ?? '').split('?')[0]
+  if (req.method === 'GET' && route === '/memory') {
+    const saved = savedConversation()
+    res.writeHead(200, json)
+    return res.end(
+      JSON.stringify({
+        id: saved?.id ?? null,
+        since: saved?.since ?? null,
+        turns: saved?.turns ?? 0,
+        devices: clients.size,
+      }),
+    )
+  }
+  if (req.method === 'POST' && route === '/memory/reset') {
+    conversation?.stop()
+    conversation = null
+    forgetConversation()
+    console.log('[ultron] memory reset: next question starts a new conversation')
+    // Every app clears its transcript, since none of it is remembered now.
+    broadcast({ type: 'ui', op: 'screen', args: { what: 'transcript' } })
+    if (clients.size) conversationNow()
+    res.writeHead(200, json)
+    return res.end(JSON.stringify({ ok: true }))
+  }
+  res.writeHead(405, json)
+  return res.end(JSON.stringify({ error: 'method not allowed' }))
+}
