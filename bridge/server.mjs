@@ -28,6 +28,7 @@ import { createHash } from 'node:crypto'
 import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
+import { handleShell, shellInfo } from './shell.mjs'
 
 // The same .env.local the Vite app reads, so the ElevenLabs key and the
 // ULTRON_* settings can live in one file instead of the shell. Variables
@@ -579,9 +580,13 @@ const TTS_CACHE_MAX = 160
 let ttsChars = 0
 let ttsSpent = false
 
-function ttsCachePath(text) {
+/** A voice the page asked for by id (the L panel's `voice id`). Checked
+ *  because it goes into the upstream URL and the cache key. */
+const VOICE_ID_RE = /^[A-Za-z0-9]{8,40}$/
+
+function ttsCachePath(text, voice = VOICE_ID) {
   const id = createHash('sha1')
-    .update([VOICE_ID, TTS_MODEL, LANG_CODE, text].join('\n'))
+    .update([voice, TTS_MODEL, LANG_CODE, text].join('\n'))
     .digest('hex')
   return join(TTS_CACHE, `${id}.mp3`)
 }
@@ -820,8 +825,15 @@ const handleRequest = async (req, res) => {
         tts: eleven && !ttsSpent,
         stt: eleven && STT_ENGINE === 'elevenlabs',
         lang: LANG,
+        shell: shellInfo(),
       }),
     )
+  }
+
+  // The L panel's `!` commands (bridge/shell.mjs). Off unless
+  // ULTRON_ALLOW_SHELL=1, and only ever for this machine.
+  if (req.method === 'POST' && req.url === '/shell') {
+    return handleShell(req, res, cors)
   }
 
   // The real ElevenLabs balance, for the page's log panel. Needs a key allowed
@@ -855,6 +867,42 @@ const handleRequest = async (req, res) => {
     } catch (err) {
       res.writeHead(200, json)
       return res.end(JSON.stringify({ error: String(err?.message ?? err) }))
+    }
+  }
+
+  // The voices on the ElevenLabs account, for the L panel's `voice list`. Like
+  // /usage, a restricted key may be refused; the panel says so and carries on.
+  if (req.method === 'GET' && req.url === '/voices') {
+    const key = elevenKey()
+    const json = { ...cors, 'content-type': 'application/json' }
+    if (!key) {
+      res.writeHead(200, json)
+      return res.end(JSON.stringify({ error: 'no key', default: VOICE_ID }))
+    }
+    try {
+      const upstream = await fetch('https://api.elevenlabs.io/v1/voices', {
+        headers: { 'xi-api-key': key },
+      })
+      if (!upstream.ok) {
+        res.writeHead(200, json)
+        return res.end(JSON.stringify({ error: `elevenlabs ${upstream.status}`, default: VOICE_ID }))
+      }
+      const { voices = [] } = await upstream.json()
+      res.writeHead(200, json)
+      return res.end(
+        JSON.stringify({
+          default: VOICE_ID,
+          voices: voices.map((v) => ({
+            id: v.voice_id,
+            name: v.name,
+            category: v.category ?? '',
+            labels: Object.values(v.labels ?? {}).filter((x) => typeof x === 'string'),
+          })),
+        }),
+      )
+    } catch (err) {
+      res.writeHead(200, json)
+      return res.end(JSON.stringify({ error: String(err?.message ?? err), default: VOICE_ID }))
     }
   }
 
@@ -1002,8 +1050,9 @@ const handleRequest = async (req, res) => {
     // Inside a try: this handler is async with nothing catching its rejection,
     // so a malformed body used to take the entire bridge down with it.
     let text
+    let voice
     try {
-      ;({ text } = JSON.parse(body || '{}'))
+      ;({ text, voice } = JSON.parse(body || '{}'))
     } catch {
       res.writeHead(400, cors)
       return res.end('bad json')
@@ -1012,8 +1061,13 @@ const handleRequest = async (req, res) => {
       res.writeHead(400, cors)
       return res.end('no text')
     }
+    if (voice != null && !(typeof voice === 'string' && VOICE_ID_RE.test(voice))) {
+      res.writeHead(400, cors)
+      return res.end('bad voice id')
+    }
+    const voiceId = voice || VOICE_ID
     const cacheable = text.length <= TTS_CACHE_MAX
-    const cached = cacheable ? ttsCachePath(text) : null
+    const cached = cacheable ? ttsCachePath(text, voiceId) : null
     if (cached) {
       const hit = await readFile(cached).catch(() => null)
       if (hit) {
@@ -1033,7 +1087,7 @@ const handleRequest = async (req, res) => {
     }
     try {
       const upstream = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream` +
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream` +
           // 22kHz mono is half the bytes of 44kHz and indistinguishable through
           // a laptop speaker; optimize_streaming_latency=3 trades a little
           // prosody for a much earlier first byte.

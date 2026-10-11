@@ -386,6 +386,33 @@ export function setMuted(on: boolean): void {
   }
 }
 
+const VOICE_ID_KEY = 'ultron.voiceId'
+
+/**
+ * The ElevenLabs voice chosen from the L panel's terminal (`voice id`), or
+ * null for the bridge's own (ULTRON_VOICE_ID). Sent with every line rather
+ * than set on the bridge, so it survives a bridge restart and needs no .env.
+ */
+let voiceId: string | null = (() => {
+  try {
+    return localStorage.getItem(VOICE_ID_KEY)
+  } catch {
+    return null
+  }
+})()
+
+export const elevenVoiceId = () => voiceId
+
+export function setElevenVoiceId(id: string | null): void {
+  voiceId = id
+  try {
+    if (id) localStorage.setItem(VOICE_ID_KEY, id)
+    else localStorage.removeItem(VOICE_ID_KEY)
+  } catch {
+    // Private mode: this voice for this page only.
+  }
+}
+
 export function createSpeaker(): Speaker {
   const queue: Item[] = []
   let buffer = ''
@@ -803,7 +830,7 @@ async function fetchCloudAudio(text: string): Promise<string | null> {
       const res = await fetch(`${BRIDGE_HTTP_URL}/tts`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(voiceId ? { text, voice: voiceId } : { text }),
       })
       if (res.ok) {
         const blob = await res.blob()
@@ -831,7 +858,7 @@ async function fetchCloudAudio(text: string): Promise<string | null> {
   if (env.elevenKey) {
     try {
       const res = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${env.elevenVoiceId}/stream` +
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId ?? env.elevenVoiceId}/stream` +
           `?output_format=mp3_22050_32&optimize_streaming_latency=3`,
         {
           method: 'POST',

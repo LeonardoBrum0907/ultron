@@ -2,12 +2,13 @@ import { useEffect, useRef } from 'react'
 import { Figure } from './ui/Figure'
 import { TextBox } from './ui/TextBox'
 import { LogPanel } from './ui/LogPanel'
+import { bindActions } from './lib/commands'
 import { clip, log } from './lib/log'
 import { Hud } from './ui/Hud'
 import { Diagnostics } from './ui/Diagnostics'
 import { useStore } from './store'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
-import { createSpeaker, cycleVoice, currentVoiceName, diag as ttsDiag } from './lib/tts'
+import { createSpeaker, cycleVoice, currentVoiceName, setMuted, diag as ttsDiag } from './lib/tts'
 import * as sfx from './lib/sfx'
 import * as hands from './lib/hands'
 import * as camera from './lib/camera'
@@ -86,6 +87,9 @@ export default function App() {
    */
   const turn = useRef(0)
   const booting = useRef(false)
+  /** Bumped by every power off, so a boot still sleeping through the assembly
+   *  when he was switched off does not wake him at the end of it. */
+  const bootGen = useRef(0)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const voicePoll = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -382,6 +386,7 @@ export default function App() {
   const onMic = (on: boolean) => {
     micGen.current++
     setMicOn(on)
+    store.getState().setMicFlag(on)
     log('voice', on ? 'microfone ligado' : 'microfone desligado')
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot') return // boot starts it
@@ -431,6 +436,8 @@ export default function App() {
 
   const ignite = async () => {
     const s = store.getState()
+    const gen = bootGen.current
+    const cut = () => gen !== bootGen.current
 
     // Must happen inside the click handler — browsers won't start an
     // AudioContext or speech synthesis without a user gesture.
@@ -561,6 +568,7 @@ export default function App() {
     // ASM_END), so he is whole before he goes to sleep waiting for his name.
     await new Promise((r) => setTimeout(r, 10800)) // boot sequence
     await warming
+    if (cut()) return
     store.getState().setConnected(connectedLabels())
     store.getState().setVoice(currentVoiceName())
 
@@ -581,13 +589,83 @@ export default function App() {
     // first turn already uses ElevenLabs when a key is present and the browser
     // fallback when it is not — no flag, no reload.
     await probeCapabilities()
+    if (cut()) return
 
     // One voice loop, running until the page closes or the mic is switched
     // off. With the mic off he boots straight to the text box.
     await startListening()
+    if (cut()) return
 
     store.getState().setPhase('dormant')
   }
+
+  /**
+   * The way back to offline: the figure comes apart into the dust and waits for
+   * the click (or `on`) again. Nothing in the old build ever powered him down,
+   * so this undoes what ignite set up: the voice loop, any answer in flight,
+   * the boot if it is still running.
+   */
+  const powerOff = () => {
+    const s = store.getState()
+    if (s.phase === 'offline') return
+    const busy = s.phase === 'thinking' || s.phase === 'tooling' || s.phase === 'speaking'
+    bootGen.current++
+    booting.current = false
+    clearIdle()
+    silence()
+    turn.current++
+    if (busy) interrupt()
+    micGen.current++
+    voice.current?.stop()
+    voice.current = null
+    if (voicePoll.current) clearInterval(voicePoll.current)
+    voicePoll.current = null
+    sfx.duck(false)
+    s.setCaption('')
+    s.setBootNote('')
+    s.setPhase('offline')
+  }
+
+  /** A line said straight through the speaker, no Claude: `voice test`. */
+  const sayLine = (text: string) => {
+    silence()
+    const t = createSpeaker()
+    speaker.current = t
+    t.say(text)
+    void t.end()
+  }
+
+  /** The voice switch, from the text box or the terminal. */
+  const onMute = (off: boolean) => {
+    if (off) speaker.current?.cancel()
+  }
+
+  // What the L panel's terminal can do that needs the conversation's own
+  // machinery. Rebound every render so it always calls the current closures.
+  bindActions({
+    powerOn: () => void powerOn(),
+    powerOff,
+    sleep: () => {
+      if (store.getState().phase !== 'offline') goDormant()
+    },
+    wake: () => onWake(''),
+    stop: () => {
+      const phase = store.getState().phase
+      if (phase === 'thinking' || phase === 'tooling' || phase === 'speaking') {
+        onSpeechStart()
+        listen(AWAIT_SPEECH_MS)
+      } else {
+        silence()
+      }
+    },
+    setMic: onMic,
+    setVoice: (on) => {
+      setMuted(!on)
+      store.getState().setMutedFlag(!on)
+      onMute(!on)
+    },
+    say: sayLine,
+  })
 
   // -- level pump + keys ----------------------------------------------------
 
@@ -745,7 +823,7 @@ export default function App() {
       <Hud />
       <TextBox
         onSend={onTyped}
-        onMute={(off) => off && speaker.current?.cancel()}
+        onMute={onMute}
         onMic={onMic}
       />
       <Diagnostics />

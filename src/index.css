@@ -1409,15 +1409,14 @@ canvas.figure {
 
 .lg {
   position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
   z-index: 19;
-  width: min(32rem, 94vw);
   display: flex;
   flex-direction: column;
   background: rgba(2, 10, 12, 0.92);
-  border-left: 1px solid color-mix(in srgb, var(--accent, #19d8d2) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #19d8d2) 40%, transparent);
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.7rem;
   line-height: 1.5;
@@ -1436,6 +1435,50 @@ canvas.figure {
   color: var(--accent, #19d8d2);
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
+
+.lg-head {
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.lg-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.lg-close {
+  background: none;
+  border: 0;
+  color: #6d8886;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+  cursor: pointer;
+}
+
+.lg-close:hover { color: #eaf9ff; }
+
+/* Resize handles: thin strips on the edges, squares on the corners */
+.lg-edge {
+  position: absolute;
+  z-index: 2;
+  touch-action: none;
+}
+.lg-edge-n, .lg-edge-s { left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+.lg-edge-e, .lg-edge-w { top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+.lg-edge-n { top: 0; }
+.lg-edge-s { bottom: 0; }
+.lg-edge-e { right: 0; }
+.lg-edge-w { left: 0; }
+.lg-edge-ne, .lg-edge-nw, .lg-edge-se, .lg-edge-sw { width: 12px; height: 12px; }
+.lg-edge-ne { top: 0; right: 0; cursor: nesw-resize; }
+.lg-edge-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.lg-edge-nw { top: 0; left: 0; cursor: nwse-resize; }
+.lg-edge-se { bottom: 0; right: 0; cursor: nwse-resize; }
+
+body.float-moving, body.float-moving * { user-select: none !important; }
 
 .lg-clear {
   background: none;
@@ -1505,11 +1548,32 @@ canvas.figure {
 .lg-voice { color: #8be08b; }
 .lg-bridge { color: #a9b6c4; }
 .lg-app { color: #c9a6ff; }
+.lg-cmd { color: #eaf9ff; }
+.lg-row:has(.lg-cmd) .lg-x { white-space: pre-wrap; }
 
-body.lg-open .textbox {
-  left: calc((100vw - min(32rem, 94vw)) / 2);
-  width: min(560px, calc(94vw - min(32rem, 94vw) - 1rem));
+/* The terminal: the panel's last line */
+.lg-term {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--accent, #19d8d2);
 }
+
+.lg-term input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  color: #eaf9ff;
+  font: inherit;
+  caret-color: var(--accent, #19d8d2);
+}
+
+.lg-term input::placeholder { color: #4f6664; }
+
 
 .lg-warn .lg-x { color: #ffb454; }
 .lg-error .lg-x { color: #ff6b6b; }

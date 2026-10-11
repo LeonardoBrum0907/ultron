@@ -5,13 +5,16 @@
  * session's running cost: Claude's own per-turn figure, and ElevenLabs as
  * characters and credits (plus the real balance when the key may read it).
  * D is the older panel for the listening and speaking internals; this one is
- * the timeline.
+ * the timeline. Its last line is a terminal (lib/commands): / opens the panel
+ * straight into it.
  */
 import { useEffect, useRef, useState } from 'react'
 import { BRIDGE_HTTP_URL } from '../config'
-import { clearLog, compact, useLog } from '../lib/log'
+import { clearLog, compact, log, useLog } from '../lib/log'
 import { useStore, type Phase } from '../store'
 import { dustLevel, setDustLevel } from '../lib/dust'
+import { EDGES, useFloat } from './useFloat'
+import { completeLine, loadHistory, runCommand, saveHistory } from '../lib/commands'
 
 /** The phase, as the status line on the main screen used to say it. */
 const PHASE: Record<Phase, string> = {
@@ -47,26 +50,61 @@ export function LogPanel() {
   const phase = useStore((s) => s.phase)
   const bootNote = useStore((s) => s.bootNote)
   const connected = useStore((s) => s.connected)
+  const heldPhase = useStore((s) => s.heldPhase)
   const [dust, setDust] = useState(dustLevel)
+  const input = useRef<HTMLInputElement>(null)
+  const [line, setLine] = useState('')
+  const history = useRef<string[]>(loadHistory())
+  /** Where ↑↓ is in the history; history.length = the line being typed. */
+  const cursor = useRef(history.current.length)
+  const draft = useRef('')
+  const [focusAsked, setFocusAsked] = useState(0)
+  // A loose window, moved by its title and resized from its edges. It starts
+  // where the docked panel used to be: down the right side.
+  const win = useFloat('ultron.logWindow', () => {
+    const w = Math.min(512, window.innerWidth - 32)
+    return { x: window.innerWidth - w - 16, y: 16, w, h: window.innerHeight - 32 }
+  })
+
+  /** Open or close the panel, remembered across reloads. */
+  const show = (next: boolean | ((o: boolean) => boolean)) =>
+    setOpen((o) => {
+      const v = typeof next === 'function' ? next(o) : next
+      try {
+        localStorage.setItem(OPEN_KEY, v ? '1' : '0')
+      } catch {
+        // Private mode: it just will not be remembered.
+      }
+      return v
+    })
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      if (e.key !== 'l' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return
+      // AltGr arrives on Windows as Ctrl+Alt, and on an ABNT2 layout over an
+      // ANSI board (no key beside the right Shift) / is AltGr+Q.
+      const altGr = e.getModifierState?.('AltGraph')
+      if (e.repeat || e.metaKey || ((e.ctrlKey || e.altKey) && !altGr)) return
+      // / opens the panel with the terminal already focused: the / character
+      // however the layout makes it, or the key beside the right Shift.
+      if (e.key === '/' || (e.code === 'Slash' && !altGr)) {
+        e.preventDefault()
+        show(true)
+        setFocusAsked((n) => n + 1)
+        return
+      }
+      if (e.key !== 'l') return
       e.preventDefault()
-      setOpen((o) => {
-        try {
-          localStorage.setItem(OPEN_KEY, o ? '0' : '1')
-        } catch {
-          // Private mode: it just will not be remembered.
-        }
-        return !o
-      })
+      show((o) => !o)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  useEffect(() => {
+    if (open && focusAsked) input.current?.focus()
+  }, [open, focusAsked])
 
   // Follow the newest line, unless the user scrolled up to read an older one.
   useEffect(() => {
@@ -88,13 +126,28 @@ export function LogPanel() {
     }
   }, [open, totals.elevenCalls])
 
-  // Lets the text box step aside instead of sliding under the panel.
-  useEffect(() => {
-    document.body.classList.toggle('lg-open', open)
-    return () => document.body.classList.remove('lg-open')
-  }, [open])
-
   if (!open) return null
+
+  const submit = () => {
+    const typed = line.trim()
+    setLine('')
+    if (!typed) return
+    const h = history.current
+    if (h[h.length - 1] !== typed) h.push(typed)
+    saveHistory(h)
+    cursor.current = h.length
+    draft.current = ''
+    stick.current = true
+    void runCommand(typed)
+  }
+
+  const step = (dir: -1 | 1) => {
+    const h = history.current
+    if (cursor.current === h.length) draft.current = line
+    const next = Math.max(0, Math.min(h.length, cursor.current + dir))
+    cursor.current = next
+    setLine(next === h.length ? draft.current : h[next])
+  }
 
   const bal =
     balance && 'limit' in balance
@@ -104,18 +157,36 @@ export function LogPanel() {
         : '…'
 
   return (
-    <aside className="lg" aria-label="Log de eventos">
-      <div className="lg-head">
-        <span>LOG · L fecha</span>
-        <button type="button" className="lg-clear" onClick={clearLog}>
-          limpar
-        </button>
+    <aside
+      className="lg"
+      aria-label="Log de eventos"
+      style={{ left: win.rect.x, top: win.rect.y, width: win.rect.w, height: win.rect.h }}
+    >
+      {EDGES.map((edge) => (
+        <div key={edge} className={`lg-edge lg-edge-${edge}`} onPointerDown={win.onResize(edge)} />
+      ))}
+      <div
+        className="lg-head"
+        onPointerDown={win.onDrag}
+        onDoubleClick={win.reset}
+        title="Arraste para mover · duplo clique volta ao lugar"
+      >
+        <span>LOG · L ou Esc fecha</span>
+        <span className="lg-actions">
+          <button type="button" className="lg-clear" onClick={clearLog}>
+            limpar
+          </button>
+          <button type="button" className="lg-close" onClick={() => show(false)} aria-label="Fechar">
+            ×
+          </button>
+        </span>
       </div>
       {/* What used to sit round the edges of the main screen: the phase, the
           voice download while it boots, and which systems are linked. */}
       <div className="lg-state">
         <div>
           <b>status</b> {phase === 'boot' && bootNote ? bootNote : PHASE[phase]}
+          {heldPhase && ` · figura presa em ${heldPhase}`}
         </div>
         <div>
           <b>sistemas</b> {[...connected, 'web'].join(' · ')}
@@ -140,7 +211,7 @@ export function LogPanel() {
       {/* The keys live here rather than on the main screen, which keeps nothing
           but the figure and the conversation. */}
       <div className="lg-keys">
-        diga <b>“hey ultron”</b> · <kbd>Space</kbd> falar · <kbd>G</kbd> mãos · <kbd>D</kbd> diagnóstico
+        diga <b>“hey ultron”</b> · <kbd>/</kbd> terminal · <kbd>Space</kbd> falar · <kbd>G</kbd> mãos · <kbd>D</kbd> diagnóstico
         {voice && (
           <>
             {' · '}
@@ -176,6 +247,52 @@ export function LogPanel() {
           </div>
         ))}
       </div>
+      <form
+        className="lg-term"
+        onSubmit={(e) => {
+          e.preventDefault()
+          submit()
+        }}
+      >
+        <span aria-hidden="true">›</span>
+        <input
+          ref={input}
+          value={line}
+          onChange={(e) => setLine(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowUp') {
+              e.preventDefault()
+              step(-1)
+            } else if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              step(1)
+            } else if (e.key === 'Tab') {
+              e.preventDefault()
+              const c = completeLine(line)
+              setLine(c.line)
+              // More than one left: show them on one row, as a shell would.
+              if (c.options.length) {
+                stick.current = true
+                log('cmd', c.options.join('  '))
+              }
+            } else if (e.key === 'Escape') {
+              // Esc clears a half-typed line first; on an empty one it closes
+              // the panel, so / … Esc is a quick look in and out.
+              e.preventDefault()
+              if (line) setLine('')
+              else {
+                e.currentTarget.blur()
+                show(false)
+              }
+            }
+          }}
+          placeholder="type help"
+          aria-label="Comando"
+          spellCheck={false}
+          autoComplete="off"
+          autoCapitalize="off"
+        />
+      </form>
     </aside>
   )
 }
