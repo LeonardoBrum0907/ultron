@@ -1,26 +1,18 @@
 /**
  * ULTRON local bridge.
  *
- * Runs the Claude Agent SDK — Claude Code as a library — and exposes one turn
- * of conversation over a WebSocket. The browser stays the face and the voice;
- * this process is the brain and the hands.
+ * Holds the one conversation every app shares and exposes it over a
+ * WebSocket. The browser stays the face and the voice; this process is the
+ * brain and the hands. Which model thinks is behind a port
+ * (bridge/brain/brain.ts); today it is Claude, through the Claude Agent SDK
+ * (bridge/brain/claude.ts), which needs no API key and reaches every MCP
+ * server in your Claude Code config.
  *
- * Two things this buys over calling the Claude API from the browser:
- *   1. No API key. It authenticates exactly the way `claude` does, off your
- *      existing login, and bills to that same account.
- *   2. Every MCP server in your Claude Code config is available, including the
- *      local stdio ones a browser could never reach — higgsfield, elevenlabs,
- *      android, playwright, palmier-pro and the rest.
- *
- *   node bridge/server.mjs
+ *   npm run bridge
  */
 
 import { WebSocketServer } from 'ws'
-import { query } from '@anthropic-ai/claude-agent-sdk'
-import { displayServer } from './panels.mjs'
-import { uiServer } from './ui.mjs'
-import { chromeAvailable, chromeServer } from './chrome.mjs'
-import { visionServer } from './vision.mjs'
+import { chromeAvailable } from './chrome.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { readFileSync, realpathSync } from 'node:fs'
 import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
@@ -31,10 +23,13 @@ import { probeUrl, renderPage } from './page.mjs'
 import { handleShell, shellInfo } from './shell.mjs'
 import { gate, handleAuth, isRemote, publicOrigin, remoteEnabled, sameOrigin } from './auth.mjs'
 import { forgetConversation, rememberConversation, savedConversation } from './memory.mjs'
-import { isDelegation, toolPolicy } from './policy.ts'
+import { toolPolicy } from './policy.ts'
 import { readBridgeConfig } from './config.ts'
 import { personaPrompts } from './persona.ts'
-import { toSdkServer } from './brain/claude-tools.ts'
+import { claudeAgentBrain } from './brain/claude.ts'
+import { ConversationSlot } from './conversation.ts'
+import { Devices } from './devices.ts'
+import { ownTools } from './tools/own.ts'
 
 // The same .env.local the Vite app reads, so the ElevenLabs key and the
 // ULTRON_* settings can live in one file instead of the shell. Variables
@@ -124,7 +119,6 @@ function originAllowed(origin) {
 /** Writes, shell and acting on the world wait for this (bridge/policy.ts). */
 const ALLOW_WRITES = config.allowWrites
 const policy = toolPolicy({ allowWrites: ALLOW_WRITES })
-const decideTool = (name) => policy.permits(name)
 
 // The voice and the heavy subagent (bridge/config.ts explains the split).
 const MODEL = config.brain.voice.model
@@ -132,45 +126,6 @@ const EFFORT = config.brain.voice.effort
 const HEAVY = config.brain.heavy !== null
 const HEAVY_MODEL = config.brain.heavy?.model ?? 'off'
 const HEAVY_EFFORT = config.brain.heavy?.effort ?? 'high'
-
-/** Which model and effort a frame came from, for the page's log panel: the
- *  voice, or (sub) the heavy subagent working under it. */
-const ranOn = (sub) =>
-  sub && HEAVY ? { model: HEAVY_MODEL, effort: HEAVY_EFFORT } : { model: MODEL, effort: EFFORT }
-
-/**
- * Every MCP server Claude Code has configured, read out of its own config.
- *
- * This does two jobs. The HUD wants the names while the boot animation plays,
- * and the agent doesn't emit its init message — and therefore its server
- * list — until the first user message flows through, which is far too late.
- * More importantly, this bridge turns filesystem settings off (see
- * settingSources below) and the SDK stops discovering these servers on its
- * own, so handing them over explicitly is what keeps the local stdio ones —
- * the whole reason the bridge exists — in play.
- *
- * Only the global block and the home-directory project scope, because
- * homedir() is our cwd. That makes the list a close but not exact match for
- * the agent's own: the 'ready' sent on connect comes from here and the second
- * one, sent from the init message a turn later, carries live status. Expect
- * the two to differ, and treat the later one as authoritative.
- */
-function configuredServers() {
-  try {
-    const cfg = JSON.parse(
-      readFileSync(join(homedir(), '.claude.json'), 'utf8'),
-    )
-    return {
-      ...(cfg.mcpServers ?? {}),
-      // Servers scoped to the home directory apply too, since that's our cwd.
-      ...(cfg.projects?.[homedir()]?.mcpServers ?? {}),
-    }
-  } catch {
-    return {}
-  }
-}
-
-const MCP_SERVERS = configuredServers()
 
 // What Ultron is and how he talks, for the voice and for the heavy subagent.
 const PROMPTS = personaPrompts({ lang: LANG, heavy: HEAVY })
@@ -974,577 +929,29 @@ console.log(
     (ALLOW_NO_ORIGIN ? ' and clients that send no origin' : ''),
 )
 
-/**
- * What to tell the browser when a turn ends badly. Plain sentences, because
- * whatever reaches the client is liable to be spoken.
- */
-const RESULT_FAILURES = {
-  error_during_execution: 'The turn failed part way through.',
-  error_max_turns: 'The turn ran too long and was stopped.',
-  error_max_budget_usd: 'The budget for this turn ran out.',
-  error_max_structured_output_retries: 'The answer could not be assembled.',
-  default: 'The turn ended without an answer.',
-}
-
-/**
- * Every app connected right now: the Chrome tab on this PC, the desktop
- * window, a phone. They all share one conversation, so what one asks and what
- * Ultron answers reaches every one of them.
- */
-const clients = new Set()
-
-/** The servers the agent reported at init, so a later client gets them too. */
-let liveServers = null
-
-const broadcast = (msg) => {
-  const raw = JSON.stringify(msg)
-  for (const c of clients) if (c.readyState === c.OPEN) c.send(raw)
-}
-
-/**
- * The conversation, which outlives any one socket.
- *
- * It used to be built per connection and closed with it, so a reload or a
- * dropped Wi-Fi wiped Ultron's memory while the transcript still showed it.
- * Now it is built once, on first use, resumes the saved session from disk
- * (bridge/memory.mjs) and is only ever replaced by `memory reset` or by the
- * agent itself failing.
- */
-let conversation = null
-
-function startConversation() {
-  const resumeId = savedConversation()?.id ?? null
-  let initSeen = false
-
-  /** Resolves the pending user message into the SDK's input generator. */
-  let deliver = null
-  let closed = false
-  const inbox = []
-
-  async function* userMessages() {
-    while (!closed) {
-      const text =
-        inbox.shift() ??
-        (await new Promise((resolve) => {
-          deliver = resolve
-        }))
-      if (closed || text == null) return
-      yield {
-        type: 'user',
-        message: { role: 'user', content: text },
-        parent_tool_use_id: null,
-      }
-    }
-  }
-
-  // Everything the conversation says goes to every app. Turn frames carry the
-  // id of the question, so each app knows whether the answer is its own to
-  // speak or only to show.
-  const send = broadcast
-
-  /** The app whose question is being answered: the camera is on that one. */
-  let asker = null
-  /** Whether a turn is in flight, and whether it has already been told to stop. */
-  let busy = false
-  let stopping = false
-
-  /**
-   * Which question the agent is currently answering.
-   *
-   * The stream carries no notion of a turn, so without this the client cannot
-   * tell the tail of an abandoned answer from the start of the new one — it
-   * attaches a listener and receives whatever is on the socket. Echoing the
-   * id the client sent lets it ignore anything that is not its own, which is
-   * the only reliable fix: no amount of waiting on this side changes what a
-   * listener over there has already heard.
-   */
-  let answering = null
-  const sendTurn = (msg) => send({ ...msg, ask: answering })
-
-  /**
-   * Asking the browser for something and waiting for the answer.
-   *
-   * Every other tool here pushes — a panel, a blade, a retint — and never needs
-   * a reply. The camera is the exception: the hardware is over there and the
-   * model is here, so a frame has to come back. Correlated by id because a turn
-   * can have more than one request in flight, and timed out because a browser
-   * that has been closed mid-question would otherwise hang the turn until the
-   * two-minute idle timer noticed.
-   */
-  const waiting = new Map()
-  let asks = 0
-
-  const ask = (kind, args, timeoutMs = 20_000) =>
-    new Promise((resolve, reject) => {
-      const socket = asker
-      if (!socket || socket.readyState !== socket.OPEN) {
-        return reject(new Error('the interface is not connected'))
-      }
-      const id = `q${++asks}`
-      const timer = setTimeout(() => {
-        waiting.delete(id)
-        reject(new Error('the interface did not answer in time'))
-      }, timeoutMs)
-      waiting.set(id, { resolve, timer })
-      socket.send(JSON.stringify({ type: kind, id, ...args }))
-    })
-
-  /**
-   * Announcing a tool on the HUD, once, and only if it actually runs.
-   *
-   * A tool_use block surfaces twice — as a partial stream event and again on
-   * the completed assistant message — so ids are remembered. The harder part
-   * is timing, because a refused tool that lights the badge, plays the sound
-   * and provokes a "working on it" line, for work that never happens, reads as
-   * a bug on camera.
-   *
-   * The SDK's order is: the block starts streaming, then canUseTool is asked,
-   * then the tool runs. So nothing is known at content_block_start. Announcing
-   * from inside canUseTool would know the verdict but miss tools entirely —
-   * measured on this SDK, the callback is consulted only for calls the CLI
-   * hasn't already settled, so a `Bash: echo` its own classifier waves through
-   * never reaches us at all.
-   *
-   * So: announce immediately for anything decideTool permits, since those run.
-   * Hold the rest, and let the tool_result settle it — a refusal comes back as
-   * is_error, anything else really did execute and has earned its badge, a
-   * beat late. Nothing is ever announced for work that didn't happen.
-   */
-  const seenTools = new Set()
-  const heldTools = new Map()
-  /** Whether this turn went to the heavy subagent, for the log panel. */
-  let escalated = false
-  /**
-   * Every tool that counts as work, by id, until its result comes back. The
-   * face wants to know how each one ended — pleased with a task done, angry at
-   * one that failed — so the result is reported for all of them, announced or
-   * held, refusals included: a refused tool is work that did not get done.
-   */
-  const workTools = new Map()
-  /** Every tool's id → whether the heavy subagent called it (else the voice). */
-  const toolSub = new Map()
-
-  /**
-   * Resolves when the turn in flight has actually finished.
-   *
-   * Waiting on session.interrupt() alone is not enough. It resolves when the
-   * agent has been *told* to stop, not when it has, so the last tokens of the
-   * abandoned answer are still on their way — and since nothing on the wire
-   * identifies which question a delta belongs to, they land on the next turn's
-   * listener. Measured: ask for ALPHA, interrupt, ask for BRAVO, and BRAVO's
-   * answer arrives as "ALPHA\nBRAVO".
-   *
-   * The SDK emits exactly one `result` per turn, so that is the boundary worth
-   * waiting for. Raced against a timeout because a turn that never reports one
-   * must not wedge the conversation for ever — a stray word is a blemish, a
-   * deadlocked assistant is not.
-   */
-  let settling = Promise.resolve()
-  let finishTurn = null
-
-  const turnFinished = () =>
-    new Promise((resolve) => {
-      finishTurn = resolve
-    })
-
-  /**
-   * A brief pause so the abandoned turn's frames are tagged with the OLD id
-   * before the new one is adopted. Short, because correctness now comes from
-   * the tag rather than from the wait — this only has to cover the gap, not
-   * outlast the whole turn.
-   */
-  const SETTLE_CAP_MS = 400
-
-  const announceTool = (id, name, sub = false) => {
-    if (!name || (id && seenTools.has(id))) return
-    if (id) seenTools.add(id)
-    if (id) toolSub.set(id, sub)
-    // The display tool isn't work being done, it's the HUD drawing itself —
-    // announcing it would put "ultron · display" in the tool badge and trigger
-    // a "working on it" filler for something already on screen.
-    if (name === 'mcp__ultron__display') return
-    // The ui_* tools are the same case one step further: retinting the
-    // interface is the interface talking about itself, not work being done for
-    // the user, and the badge would be describing the very thing they can see.
-    if (name.startsWith('mcp__ultron_ui__')) return
-    if (id) workTools.set(id, name)
-    if (isDelegation(name) && !escalated) {
-      escalated = true
-      console.log(`[ultron] handed to heavy (${HEAVY_MODEL})`)
-    }
-    if (decideTool(name)) return sendTurn({ type: 'tool', name, ...ranOn(sub) })
-    if (id) heldTools.set(id, name)
-  }
-
-  const settleTool = (id, failed) => {
-    const name = heldTools.get(id)
-    if (name === undefined) return
-    heldTools.delete(id)
-    if (!failed) sendTurn({ type: 'tool', name, ...ranOn(toolSub.get(id)) })
-  }
-
-  const reportTool = (id, failed) => {
-    const name = workTools.get(id)
-    if (name === undefined) return
-    workTools.delete(id)
-    sendTurn({ type: 'tool_result', name, ok: !failed, ...ranOn(toolSub.get(id)) })
-  }
-
-  const session = query({
-    prompt: userMessages(),
-    options: {
-      // Everything Claude Code has configured, plus the HUD as an in-process
-      // server. The HUD's handler sends to every connected app, so a `display`
-      // call lands on each screen directly.
-      mcpServers: {
-        ...MCP_SERVERS,
-        ultron: toSdkServer(
-          displayServer(
-            (panel) => send({ type: 'panel', panel }),
-            (blade) => send({ type: 'blade', blade }),
-          ),
-        ),
-        // The interface controls, sent the same way. A separate key because
-        // MCP tool names are `mcp__<key>__<tool>` and one key can only carry
-        // one server; the underscore in it is why decideTool and announceTool
-        // both name `ultron_ui` explicitly.
-        ultron_ui: toSdkServer(uiServer((op, args) => send({ type: 'ui', op, args }))),
-        // The user's own Chrome, over the extension's native-host socket. It
-        // holds no per-connection state, but it is built here with the rest so
-        // the write gate is read once, at the same point as everything else.
-        ultron_chrome: toSdkServer(chromeServer({ allowWrites: ALLOW_WRITES })),
-        // The camera, which unlike everything else here has to ask and wait.
-        ultron_eyes: toSdkServer(visionServer(ask)),
-      },
-      // A plain system prompt, not the claude_code preset. The preset is
-      // tuned for a coding agent — verbose, file-oriented, and a large chunk
-      // of input tokens on every turn. Replacing it makes the persona stick,
-      // keeps answers short enough to speak, and cuts cost per turn.
-      systemPrompt: PROMPTS.voice,
-      // Run from the home directory so project-scoped MCP servers don't shadow
-      // the global ones, and so file tools have a sane root.
-      cwd: homedir(),
-      // No filesystem settings at all. Left to its default the SDK loads
-      // ~/.claude/settings.json and settings.local.json exactly as the CLI
-      // does — which on a working machine means a bypassPermissions default
-      // and a pile of allow-rules for Bash. Allow-rules are matched before the
-      // permission callback, so decideTool below would never even be asked
-      // about the tools it most needs to refuse. Empty makes this bridge the
-      // only authority. It also stops the global CLAUDE.md riding along on
-      // every voice turn, carrying instructions written for a coding agent
-      // into a conversation that is meant to be two sentences long.
-      //
-      // The cost is that MCP servers stop being discovered too, which is why
-      // mcpServers above passes them in by hand.
-      settingSources: [],
-      // Stated explicitly, and it has to be.
-      //
-      // With no `model` here the SDK falls back to its own default, which on
-      // this machine resolved to claude-opus-4-8[1m] — not what src/config.ts
-      // declares for the browser-direct path, and not anything anyone chose.
-      // Normally your own `/model` preference would decide, but that lives in
-      // the settings files `settingSources: []` deliberately stops loading, so
-      // without this line nothing in the project has a say at all.
-      model: MODEL,
-      effort: EFFORT,
-      // Carry on the saved conversation. The SDK keeps the transcript on disk
-      // (persistSession is its default); this only names which one.
-      ...(resumeId ? { resume: resumeId } : {}),
-      // The heavy subagent. Its tool calls go through canUseTool like any
-      // other, so the write gate holds for it too.
-      ...(HEAVY
-        ? {
-            agents: {
-              heavy: {
-                description:
-                  'Long or multi-step work: several tools in a row, research, ' +
-                  'browser tasks, files. Not for conversation or one quick action.',
-                prompt: PROMPTS.heavy,
-                model: HEAVY_MODEL,
-                effort: HEAVY_EFFORT,
-              },
-            },
-          }
-        : {}),
-      maxTurns: 24,
-      permissionMode: 'default',
-      // Without this the SDK only emits whole assistant messages, and ULTRON
-      // would sit silent until the entire answer was written. Partial events
-      // are what let speech start on the first finished sentence.
-      includePartialMessages: true,
-      // Signature is (toolName, input, options) and it must return a
-      // PermissionResult object. Returning a bare boolean silently denies
-      // everything, with the tool name arriving undefined.
-      //
-      // Worth knowing: this is a last gate, not the only one. Calls the CLI
-      // has already settled never arrive here — its own classifier waves
-      // through a `Bash: echo hello` without asking, and only reaches us for
-      // something with a consequence, like a `touch`. So a deny here is
-      // reliable; an absence of a call here is not proof nothing ran.
-      canUseTool: async (toolName) => {
-        const ok = decideTool(toolName)
-        console.log(`[ultron] tool ${toolName} -> ${ok ? 'allow' : 'deny'}`)
-        return ok
-          ? { behavior: 'allow' }
-          : {
-              behavior: 'deny',
-              // Every word of this can end up spoken, so it carries no command
-              // to read out — the persona is forbidden from saying one aloud.
-              message:
-                'Blocked: ULTRON is running in read-only mode and cannot take' +
-                ' actions that change anything. Tell the user this action is' +
-                ' unavailable until they enable write access on the machine.',
-            }
-      },
-    },
-  })
-
-  // Pump the session's output stream to the browser for as long as it lives.
-  ;(async () => {
-    try {
-      for await (const msg of session) {
-        if (config.debug) {
-          console.log('[msg]', msg.type, msg.event?.type ?? '')
-        }
-
-        switch (msg.type) {
-          // Raw Anthropic stream events, surfaced by includePartialMessages.
-          // This is the ONLY place spoken text arrives: there is no top-level
-          // text_delta message in the SDK union and the 'assistant' message
-          // carries no deltas either. Turn includePartialMessages off and
-          // ULTRON goes completely mute.
-          case 'stream_event': {
-            const ev = msg.event
-            // A subagent's words are its report to the voice, not speech.
-            // Only the main thread's text goes to the speaker; its tools
-            // still light the HUD, since that is work being done.
-            if (
-              msg.parent_tool_use_id == null &&
-              ev?.type === 'content_block_delta' &&
-              ev.delta?.type === 'text_delta' &&
-              ev.delta.text
-            ) {
-              sendTurn({ type: 'text', delta: ev.delta.text })
-            }
-            if (
-              ev?.type === 'content_block_start' &&
-              ev.content_block?.type === 'tool_use'
-            ) {
-              announceTool(ev.content_block.id, ev.content_block.name, msg.parent_tool_use_id != null)
-            }
-            break
-          }
-
-          case 'assistant': {
-            // Fallback for builds that emit whole assistant messages rather
-            // than partial events. Deduped against the stream_event path.
-            for (const block of msg.content ?? msg.message?.content ?? []) {
-              if (block.type === 'tool_use') {
-                announceTool(block.id, block.name, msg.parent_tool_use_id != null)
-              }
-            }
-            break
-          }
-
-          case 'user': {
-            // Tool results come back as a user message. This is the only place
-            // a held announcement can be resolved: a refused tool arrives with
-            // is_error set and stays off the HUD, anything else ran.
-            const blocks = msg.message?.content
-            if (!Array.isArray(blocks)) break
-            for (const block of blocks) {
-              if (block?.type === 'tool_result') {
-                settleTool(block.tool_use_id, block.is_error === true)
-                reportTool(block.tool_use_id, block.is_error === true)
-              }
-            }
-            break
-          }
-
-          case 'result':
-            // A result is not automatically a success. The error subtypes
-            // carry no `result` field at all, so reporting them as 'done' with
-            // empty text is indistinguishable from a turn that simply had
-            // nothing to say — the HUD stops spinning and ULTRON stands there
-            // silent. Say what happened instead.
-            if (msg.subtype === 'success') {
-              if (msg.session_id) rememberConversation(msg.session_id, { turn: true, continuing: true })
-              sendTurn({
-                type: 'done',
-                text: msg.result ?? '',
-                costUsd: msg.total_cost_usd ?? null,
-                // What the turn used, for the page's log panel.
-                usage: msg.usage
-                  ? {
-                      in: msg.usage.input_tokens ?? 0,
-                      out: msg.usage.output_tokens ?? 0,
-                      cacheRead: msg.usage.cache_read_input_tokens ?? 0,
-                      cacheWrite: msg.usage.cache_creation_input_tokens ?? 0,
-                    }
-                  : null,
-                durationMs: msg.duration_ms ?? null,
-                turns: msg.num_turns ?? null,
-                escalated,
-                ...ranOn(false),
-                heavy: escalated && HEAVY ? ranOn(true) : null,
-              })
-            } else {
-              console.error(
-                `[ultron] turn failed: ${msg.subtype}`,
-                msg.errors ?? '',
-              )
-              sendTurn({
-                type: 'error',
-                message: RESULT_FAILURES[msg.subtype] ?? RESULT_FAILURES.default,
-                reason: msg.subtype,
-                costUsd: msg.total_cost_usd ?? null,
-                ...ranOn(false),
-              })
-            }
-            // Whatever was waiting on this turn to finish can go now. This is
-            // the only place a turn is genuinely over.
-            busy = false
-            stopping = false
-            finishTurn?.()
-            finishTurn = null
-            // One turn's tool ids are never referred to again, and these
-            // otherwise grow for as long as the socket is open.
-            seenTools.clear()
-            heldTools.clear()
-            toolSub.clear()
-            escalated = false
-            break
-
-          case 'system':
-            if (msg.subtype === 'init') {
-              initSeen = true
-              if (msg.session_id) {
-                rememberConversation(msg.session_id, { continuing: Boolean(resumeId) })
-              }
-              // Servers report 'pending' until first use — they connect
-              // lazily — so only drop the ones that are actually unusable.
-              const usable = (msg.mcp_servers ?? [])
-                .filter((s) => s.status !== 'needs-auth' && s.status !== 'failed')
-                .map((s) => s.name)
-              liveServers = usable
-              send({ type: 'ready', servers: usable })
-              console.log(`[ultron] ${usable.length} MCP servers available`)
-            }
-            break
-        }
-      }
-    } catch (err) {
-      console.error('[ultron] session error:', err)
-      // A saved session that will not resume (deleted, or from an older
-      // Claude Code) would fail the same way on every retry. Forget it and the
-      // next question starts a new conversation; nobody asked anything yet, so
-      // there is nobody to tell.
-      if (resumeId && !initSeen) {
-        console.warn('[ultron] could not resume the saved conversation; starting a new one')
-        forgetConversation()
-        stop()
-        if (clients.size) conversationNow()
-        return
-      }
-      send({ type: 'error', message: String(err?.message ?? err) })
-      stop()
-    }
-  })()
-
-  function stop() {
-    closed = true
-    deliver?.(null)
-    session.close?.()
-    for (const { timer } of waiting.values()) clearTimeout(timer)
-    waiting.clear()
-    if (conversation === api) conversation = null
-  }
-
-  /** Stop the turn in flight, and let the next question wait until it has. */
-  function interrupt() {
-    if (!busy || stopping) return
-    stopping = true
-    // Held so the next question can wait for it rather than racing it.
-    const stopped = turnFinished()
-    settling = Promise.resolve(session.interrupt?.())
-      .catch(() => {})
-      .then(() =>
-        Promise.race([
-          stopped,
-          new Promise((r) => setTimeout(r, SETTLE_CAP_MS)),
-        ]),
-      )
-  }
-
-  /**
-   * A question from one of the apps.
-   *
-   * Queued behind any interrupt that is still settling. A barge-in is two
-   * messages in quick succession — interrupt, then the new question — and
-   * session.interrupt() is asynchronous. Delivering the question the instant
-   * it arrives means the agent can still be winding down the previous turn,
-   * so its last tokens are emitted after the new one has begun and land on
-   * the new turn's listener. Measured: ask "one", interrupt, ask "two", and
-   * the answer to "two" comes back as "One."
-   *
-   * A question from another app while a turn is running is the same thing as
-   * a barge-in: say something and it becomes the turn, wherever it was said.
-   */
-  function question(socket, text, id, said) {
-    interrupt()
-    void settling.then(() => {
-      if (closed) return
-      answering = id
-      asker = socket
-      busy = true
-      // The other apps show what was asked; the asker already has it.
-      for (const c of clients) {
-        if (c !== socket && c.readyState === c.OPEN) {
-          c.send(JSON.stringify({ type: 'heard', text: said, ask: id }))
-        }
-      }
-      if (deliver) {
-        const resolve = deliver
-        deliver = null
-        resolve(text)
-      } else {
-        inbox.push(text)
-      }
-    })
-  }
-
-  function reply(msg) {
-    const slot = waiting.get(msg.id)
-    if (slot) {
-      waiting.delete(msg.id)
-      clearTimeout(slot.timer)
-      slot.resolve(msg)
-    }
-  }
-
-  /** An app went away. If it was the one being answered, the camera goes too. */
-  function leave(socket) {
-    if (asker === socket) asker = null
-  }
-
-  const api = { question, interrupt, reply, leave, stop }
-  return api
-}
-
-const conversationNow = () => (conversation ??= startConversation())
+// The brain, and the one conversation every app shares (bridge/conversation.ts).
+const devices = new Devices()
+const brain = claudeAgentBrain({ settings: config.brain, prompts: PROMPTS, debug: config.debug })
+const conversations = new ConversationSlot({
+  brain,
+  devices,
+  policy,
+  memory: { saved: savedConversation, remember: rememberConversation, forget: forgetConversation },
+  ownTools: (io) => ownTools({ ...io, allowWrites: ALLOW_WRITES }),
+})
 
 wss.on('connection', (socket) => {
-  console.log(`[ultron] client connected (${clients.size + 1} now)`)
-  clients.add(socket)
+  console.log(`[ultron] client connected (${devices.size + 1} now)`)
+  devices.add(socket)
 
-  // Answer the HUD straight away rather than making it wait for the agent's
+  // Answer the HUD straight away rather than making it wait for the brain's
   // first turn. Refined later by the real init message.
   socket.send(
-    JSON.stringify({ type: 'ready', servers: liveServers ?? Object.keys(MCP_SERVERS) }),
+    JSON.stringify({ type: 'ready', servers: conversations.liveServers ?? brain.knownServers() }),
   )
   // Started now rather than at the first question, so the saved conversation
   // is already loaded by the time anyone speaks.
-  conversationNow()
+  conversations.now()
 
   socket.on('message', (raw) => {
     let msg
@@ -1561,22 +968,22 @@ wss.on('connection', (socket) => {
       const tone = typeof msg.tone === 'string' ? msg.tone.trim().slice(0, 400) : ''
       const text = tone ? `<mood>${tone}</mood>\n${msg.text}` : msg.text
       const id = typeof msg.id === 'string' ? msg.id : null
-      conversationNow().question(socket, text, id, msg.text)
+      conversations.now().question(socket, text, id, msg.text)
     }
 
     if (msg.type === 'reply' && typeof msg.id === 'string') {
-      conversation?.reply(msg)
+      conversations.running?.reply(msg)
     }
 
     if (msg.type === 'interrupt') {
-      conversation?.interrupt()
+      conversations.running?.interrupt()
     }
   })
 
   socket.on('close', () => {
-    clients.delete(socket)
-    conversation?.leave(socket)
-    console.log(`[ultron] client disconnected (${clients.size} left)`)
+    devices.remove(socket)
+    conversations.running?.leave(socket)
+    console.log(`[ultron] client disconnected (${devices.size} left)`)
   })
 })
 
@@ -1596,18 +1003,16 @@ async function handleMemory(req, res, cors) {
         id: saved?.id ?? null,
         since: saved?.since ?? null,
         turns: saved?.turns ?? 0,
-        devices: clients.size,
+        devices: devices.size,
       }),
     )
   }
   if (req.method === 'POST' && route === '/memory/reset') {
-    conversation?.stop()
-    conversation = null
-    forgetConversation()
+    conversations.reset()
     console.log('[ultron] memory reset: next question starts a new conversation')
     // Every app clears its transcript, since none of it is remembered now.
-    broadcast({ type: 'ui', op: 'screen', args: { what: 'transcript' } })
-    if (clients.size) conversationNow()
+    devices.broadcast({ type: 'ui', op: 'screen', args: { what: 'transcript' } })
+    if (devices.size) conversations.now()
     res.writeHead(200, json)
     return res.end(JSON.stringify({ ok: true }))
   }

@@ -15,5 +15,11 @@ Refactors in progress and known traps. Add a line when you find one; remove it w
 
 ## Refactors in progress
 
-- LLM-agnostic brain: split `bridge/server.mjs` into a core plus a `ClaudeAgentBrain`
-  adapter, without changing behavior. Design in the project's `ultron-brain/arquitetura.md`.
+- LLM-agnostic brain (PR #8). Done: the conversation (`bridge/conversation.ts`)
+  talks only to the `Brain` port (`bridge/brain/brain.ts`); Claude sits behind it
+  in `bridge/brain/claude.ts`; Ultron's tools are neutral `ToolServer`s
+  (`bridge/tools/`). Still in `bridge/server.mjs`: the HTTP routes (speech,
+  media proxies, files, memory) and the wiring; they move out as the bridge
+  goes to TypeScript. Design in the project's `ultron-brain/arquitetura.md`.
+- Bridge to TypeScript, a module at a time. `.mjs` files still left are
+  imported by `.ts` ones unchecked (`allowJs` in `tsconfig.bridge.json`).
