@@ -80,16 +80,20 @@ Ultron is built today. `CLAUDE.md` points here.
 - Fake external I/O (LLM, API, WebSocket, filesystem) with named fake classes
   (`FakeBrain`, `FakeTts`), not inline stubs. Tests never spend credits.
 - Tests are F.I.R.S.T: fast, independent, repeatable, self-validating, timely.
-- Today: `node node_modules/tsx/dist/cli.mjs mind/test/run.ts`. The goal is a
-  single `npm test` that runs everything; when you add tests elsewhere, wire them into it.
+- `npm test` runs everything: `mind/test/run.ts` and every `*.test.ts` under
+  `bridge/` (Node's test runner, through tsx).
+- The bridge's conversation is pinned by golden masters
+  (`bridge/test/conversation.golden.test.ts`): a fake Agent SDK, two fake apps,
+  every frame recorded. A refactor must leave them unchanged. Re-record with
+  `UPDATE_GOLDEN=1 npm test` only for an intended behavior change, and say so in the commit.
 
 ## Checks
 
 Run on every change, and never add new warnings or errors:
 
 - `npm run lint` (oxlint)
-- `npx tsc -b` (typecheck `src/` and `mind/`)
-- the tests above
+- `npx tsc -b` (typecheck `src/`, `mind/` and the bridge's `.ts` files)
+- `npm test`
 
 There is no formatter configured. Match the surrounding style: 2 spaces, single
 quotes, no semicolons. Don't discuss style beyond that.
