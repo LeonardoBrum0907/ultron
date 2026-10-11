@@ -32,6 +32,7 @@ import { handleShell, shellInfo } from './shell.mjs'
 import { gate, handleAuth, isRemote, publicOrigin, remoteEnabled, sameOrigin } from './auth.mjs'
 import { forgetConversation, rememberConversation, savedConversation } from './memory.mjs'
 import { isDelegation, toolPolicy } from './policy.ts'
+import { readBridgeConfig } from './config.ts'
 
 // The same .env.local the Vite app reads, so the ElevenLabs key and the
 // ULTRON_* settings can live in one file instead of the shell. Variables
@@ -44,10 +45,10 @@ for (const name of ['.env.local', '.env']) {
   }
 }
 
-const PORT = Number(process.env.ULTRON_BRIDGE_PORT ?? 8787)
+const config = readBridgeConfig(process.env)
 
-/** The language Ultron hears and speaks, as a BCP 47 tag. */
-const LANG = process.env.ULTRON_LANG ?? 'pt-BR'
+const PORT = config.port
+const LANG = config.lang
 /** The ISO 639-1 code ElevenLabs takes for both speech directions. */
 const LANG_CODE = LANG.slice(0, 2).toLowerCase()
 const ENGLISH = LANG_CODE === 'en'
@@ -139,35 +140,16 @@ function originAllowed(origin) {
 }
 
 /** Writes, shell and acting on the world wait for this (bridge/policy.ts). */
-const ALLOW_WRITES = process.env.ULTRON_ALLOW_WRITES === '1'
+const ALLOW_WRITES = config.allowWrites
 const policy = toolPolicy({ allowWrites: ALLOW_WRITES })
 const decideTool = (name) => policy.permits(name)
 
-/**
- * Two models, split by the size of the job.
- *
- * The voice is Sonnet at low effort: a greeting, a quick question or a simple
- * command is answered in the time a spoken conversation tolerates. Anything
- * that needs several tools or a long piece of work goes to the `heavy`
- * subagent, Opus at high effort, which Sonnet calls itself through the Agent
- * tool (see the DELEGATION rules in the system prompt).
- *
- * The model choosing is deliberate. Whether a request needs tools is visible
- * to the model that holds them, not to a classifier reading the transcript,
- * and the main conversation stays on one model so its prompt cache stays warm:
- * caches are per model, and switching every turn would re-read the whole
- * history at full price.
- *
- * Sonnet 5.5 cannot run with thinking switched off through this SDK, so low
- * effort is how it is kept quick. ULTRON_MODEL and ULTRON_EFFORT still
- * override the voice; ULTRON_HEAVY_MODEL=off removes the subagent and leaves
- * everything to the voice model.
- */
-const MODEL = process.env.ULTRON_MODEL ?? 'claude-sonnet-5-5'
-const EFFORT = process.env.ULTRON_EFFORT ?? 'low'
-const HEAVY_MODEL = process.env.ULTRON_HEAVY_MODEL ?? 'claude-opus-5-5'
-const HEAVY_EFFORT = process.env.ULTRON_HEAVY_EFFORT ?? 'high'
-const HEAVY = HEAVY_MODEL !== 'off'
+// The voice and the heavy subagent (bridge/config.ts explains the split).
+const MODEL = config.brain.voice.model
+const EFFORT = config.brain.voice.effort
+const HEAVY = config.brain.heavy !== null
+const HEAVY_MODEL = config.brain.heavy?.model ?? 'off'
+const HEAVY_EFFORT = config.brain.heavy?.effort ?? 'high'
 
 /** Which model and effort a frame came from, for the page's log panel: the
  *  voice, or (sub) the heavy subagent working under it. */
@@ -1526,7 +1508,7 @@ function startConversation() {
   ;(async () => {
     try {
       for await (const msg of session) {
-        if (process.env.ULTRON_DEBUG === '1') {
+        if (config.debug) {
           console.log('[msg]', msg.type, msg.event?.type ?? '')
         }
 
