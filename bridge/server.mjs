@@ -34,6 +34,7 @@ import { forgetConversation, rememberConversation, savedConversation } from './m
 import { isDelegation, toolPolicy } from './policy.ts'
 import { readBridgeConfig } from './config.ts'
 import { personaPrompts } from './persona.ts'
+import { toSdkServer } from './brain/claude-tools.ts'
 
 // The same .env.local the Vite app reads, so the ElevenLabs key and the
 // ULTRON_* settings can live in one file instead of the shell. Variables
@@ -1197,21 +1198,23 @@ function startConversation() {
       // call lands on each screen directly.
       mcpServers: {
         ...MCP_SERVERS,
-        ultron: displayServer(
-          (panel) => send({ type: 'panel', panel }),
-          (blade) => send({ type: 'blade', blade }),
+        ultron: toSdkServer(
+          displayServer(
+            (panel) => send({ type: 'panel', panel }),
+            (blade) => send({ type: 'blade', blade }),
+          ),
         ),
         // The interface controls, sent the same way. A separate key because
         // MCP tool names are `mcp__<key>__<tool>` and one key can only carry
         // one server; the underscore in it is why decideTool and announceTool
         // both name `ultron_ui` explicitly.
-        ultron_ui: uiServer((op, args) => send({ type: 'ui', op, args })),
+        ultron_ui: toSdkServer(uiServer((op, args) => send({ type: 'ui', op, args }))),
         // The user's own Chrome, over the extension's native-host socket. It
         // holds no per-connection state, but it is built here with the rest so
         // the write gate is read once, at the same point as everything else.
-        ultron_chrome: chromeServer({ allowWrites: ALLOW_WRITES }),
+        ultron_chrome: toSdkServer(chromeServer({ allowWrites: ALLOW_WRITES })),
         // The camera, which unlike everything else here has to ask and wait.
-        ultron_eyes: visionServer(ask),
+        ultron_eyes: toSdkServer(visionServer(ask)),
       },
       // A plain system prompt, not the claude_code preset. The preset is
       // tuned for a coding agent — verbose, file-oriented, and a large chunk

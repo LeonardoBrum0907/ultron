@@ -1,4 +1,4 @@
-import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
+import { defineTool, toolServer } from './tools/tool.ts'
 import { z } from 'zod'
 
 /**
@@ -71,7 +71,7 @@ than listing them. The user knows what their own hands look like.`
  *   Sends a request to the browser and resolves with its reply.
  */
 export function visionServer(ask) {
-  return createSdkMcpServer({
+  return toolServer({
     name: 'ultron_eyes',
     version: '1.0.0',
     instructions:
@@ -80,7 +80,7 @@ export function visionServer(ask) {
     // Behind tool search, "look at me" would find nothing and become an apology.
     alwaysLoad: true,
     tools: [
-      tool(
+      defineTool(
         'look',
         DESCRIPTION,
         {
@@ -138,7 +138,7 @@ export function visionServer(ask) {
           }
         },
       ),
-      tool(
+      defineTool(
         'watch',
         WATCH_DESCRIPTION,
         {

@@ -1,4 +1,4 @@
-import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
+import { defineTool, toolServer } from './tools/tool.ts'
 import { z } from 'zod'
 import { probeUrl } from './page.mjs'
 
@@ -318,7 +318,7 @@ argument. You know those things. Overrule it whenever you have reason to.`
  * @param {(blade: object) => void} emitBlade - pushes a blade to the browser
  */
 export function displayServer(emit, emitBlade) {
-  return createSdkMcpServer({
+  return toolServer({
     name: 'ultron',
     version: '1.0.0',
     instructions:
@@ -328,7 +328,7 @@ export function displayServer(emit, emitBlade) {
     // it, it won't occur to it to show anything.
     alwaysLoad: true,
     tools: [
-      tool('display', DESCRIPTION, schema, async (args) => {
+      defineTool('display', DESCRIPTION, schema, async (args) => {
         // Refuse rather than warn. Emitting anyway put a blank card on screen
         // and told the model nothing, so it had no reason to try again; handed
         // back as an error it gets one more go with actual content in it.
@@ -377,7 +377,7 @@ export function displayServer(emit, emitBlade) {
         return { content: [{ type: 'text', text: 'On screen.' }] }
       }),
 
-      tool('blade', BLADE_DESCRIPTION, bladeSchema, async (args) => {
+      defineTool('blade', BLADE_DESCRIPTION, bladeSchema, async (args) => {
         const kind = args.kind
         const url = String(args.url ?? '').trim()
         const images = Array.isArray(args.images) ? args.images.filter(Boolean) : []
@@ -413,7 +413,7 @@ export function displayServer(emit, emitBlade) {
         return { content: [{ type: 'text', text: `Open on the blades as "${blade.title}".` }] }
       }),
 
-      tool(
+      defineTool(
         'probe_url',
         PROBE_DESCRIPTION,
         { url: z.string().describe('The absolute URL to inspect.') },

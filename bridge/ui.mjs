@@ -1,4 +1,4 @@
-import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
+import { defineTool, toolServer } from './tools/tool.ts'
 import { z } from 'zod'
 
 /**
@@ -173,7 +173,7 @@ justified a change is over. It is never the wrong thing to do.`
  * @param {(op: string, args: object) => void} emit - pushes one ui message
  */
 export function uiServer(emit) {
-  return createSdkMcpServer({
+  return toolServer({
     name: 'ultron_ui',
     version: '1.0.0',
     instructions:
@@ -184,7 +184,7 @@ export function uiServer(emit) {
     // occur to the model that the interface is something it can touch.
     alwaysLoad: true,
     tools: [
-      tool('ui_theme', THEME_DESCRIPTION, themeSchema, async (args) => {
+      defineTool('ui_theme', THEME_DESCRIPTION, themeSchema, async (args) => {
         const patch = {}
         put(patch, 'accent', toColour(args.accent))
         put(patch, 'background', toColour(args.background))
@@ -203,7 +203,7 @@ export function uiServer(emit) {
         return ok('Interface retinted.')
       }),
 
-      tool('ui_chrome', CHROME_DESCRIPTION, chromeSchema, async (args) => {
+      defineTool('ui_chrome', CHROME_DESCRIPTION, chromeSchema, async (args) => {
         const chrome = {}
         put(chrome, 'transcript', toBool(args.transcript))
 
@@ -212,7 +212,7 @@ export function uiServer(emit) {
         return ok('Chrome updated.')
       }),
 
-      tool(
+      defineTool(
         'ui_screen',
         SCREEN_DESCRIPTION,
         {
@@ -229,7 +229,7 @@ export function uiServer(emit) {
         },
       ),
 
-      tool('ui_reset', RESET_DESCRIPTION, {}, async () => {
+      defineTool('ui_reset', RESET_DESCRIPTION, {}, async () => {
         emit('reset', {})
         return ok('Interface restored.')
       }),
