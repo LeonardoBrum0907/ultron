@@ -59,6 +59,18 @@ export function LogPanel() {
   const draft = useRef('')
   const [focusAsked, setFocusAsked] = useState(0)
 
+  /** Open or close the panel, remembered across reloads. */
+  const show = (next: boolean | ((o: boolean) => boolean)) =>
+    setOpen((o) => {
+      const v = typeof next === 'function' ? next(o) : next
+      try {
+        localStorage.setItem(OPEN_KEY, v ? '1' : '0')
+      } catch {
+        // Private mode: it just will not be remembered.
+      }
+      return v
+    })
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
@@ -71,25 +83,13 @@ export function LogPanel() {
       // however the layout makes it, or the key beside the right Shift.
       if (e.key === '/' || (e.code === 'Slash' && !altGr)) {
         e.preventDefault()
-        try {
-          localStorage.setItem(OPEN_KEY, '1')
-        } catch {
-          // Private mode: it just will not be remembered.
-        }
-        setOpen(true)
+        show(true)
         setFocusAsked((n) => n + 1)
         return
       }
       if (e.key !== 'l') return
       e.preventDefault()
-      setOpen((o) => {
-        try {
-          localStorage.setItem(OPEN_KEY, o ? '0' : '1')
-        } catch {
-          // Private mode: it just will not be remembered.
-        }
-        return !o
-      })
+      show((o) => !o)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -158,7 +158,7 @@ export function LogPanel() {
   return (
     <aside className="lg" aria-label="Log de eventos">
       <div className="lg-head">
-        <span>LOG · L fecha</span>
+        <span>LOG · L ou Esc fecha</span>
         <button type="button" className="lg-clear" onClick={clearLog}>
           limpar
         </button>
@@ -258,7 +258,14 @@ export function LogPanel() {
                 log('cmd', c.options.join('  '))
               }
             } else if (e.key === 'Escape') {
-              e.currentTarget.blur()
+              // Esc clears a half-typed line first; on an empty one it closes
+              // the panel, so / … Esc is a quick look in and out.
+              e.preventDefault()
+              if (line) setLine('')
+              else {
+                e.currentTarget.blur()
+                show(false)
+              }
             }
           }}
           placeholder="type help"
