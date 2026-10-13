@@ -2,6 +2,7 @@ import type { AskHandlers } from './anthropic'
 import type { Blade, Panel } from '../store'
 import { BRIDGE_HTTP_URL, BRIDGE_WS_URL } from '../config'
 import { addClaude, clip, compact, log } from './log'
+import { logBrainSwitch } from './brain-commands'
 
 /**
  * Client for the local bridge (see bridge/server.mjs).
@@ -41,8 +42,10 @@ type Frame = {
   /** done, error, tool, tool_result: the model and effort that produced it. */
   model?: string
   effort?: string
-  /** done: the heavy subagent's model and effort, when the turn went to it. */
+  /** done: the heavy subagent's model and effort, when the turn went to it. brain: the one now in use. */
   heavy?: { model: string; effort: string } | null
+  /** brain: the voice's model and effort after a switch. */
+  voice?: { model: string; effort: string }
   delta?: string
   name?: string
   /** tool_result: whether the tool worked. */
@@ -265,6 +268,9 @@ function dispatch(ws: WebSocket) {
       onServers?.(servers)
       log('bridge', `pronto · ${servers.length} servidores MCP`)
       firstReady.resolve()
+    } else if (msg.type === 'brain' && msg.voice) {
+      voice = msg.voice
+      logBrainSwitch({ voice: msg.voice, heavy: msg.heavy ?? null })
     } else if (msg.type === 'heard' && msg.text && !mine(msg.ask)) {
       onEcho?.('user', msg.text)
     } else if (msg.type === 'done' && msg.ask && !mine(msg.ask) && msg.text) {

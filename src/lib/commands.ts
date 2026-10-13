@@ -16,6 +16,7 @@ import { dustLevel, setDustLevel } from './dust'
 import { elevenVoiceId, setElevenVoiceId } from './tts'
 import { mind } from './mind'
 import { toneNote } from './tone'
+import { BRAIN_COMMANDS } from './brain-commands'
 import { out, type Command } from './terminal-command'
 
 /** What only the app's conversation machinery can do; bound by App. */
@@ -312,6 +313,7 @@ const COMMANDS: Command[] = [
       out(`next turn ${toneNote() || 'no mood note (nothing stands out)'}`)
     },
   },
+  ...BRAIN_COMMANDS,
   {
     name: 'memory',
     usage: 'memory [reset]',

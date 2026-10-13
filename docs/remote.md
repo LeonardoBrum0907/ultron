@@ -10,6 +10,11 @@ aparece em todos, e a voz toca só no aparelho que perguntou.
 - `memory` mostra desde quando a conversa existe, quantos turnos tem e quantos
   aparelhos estão conectados.
 - `memory reset` esquece a conversa: a próxima pergunta começa uma nova.
+- `model`, `effort` e `heavy` mostram com quais modelos o Ultron pensa, em
+  qualquer aparelho. Só o PC troca: `model opus`, `effort high`, `heavy off`,
+  `model reset` (volta ao `.env.local`). A troca espera a resposta em andamento
+  e a conversa continua. A primeira resposta depois dela custa mais, porque o
+  cache de prompt é de cada modelo. A escolha fica em `~/.ultron/cerebro.json`.
 
 A conversa fica em `~/.ultron/conversa.json` (só o id) e o histórico em si fica
 onde o Claude Code já guarda as sessões (`~/.claude/projects`).

@@ -230,7 +230,7 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 | Variable | Default | Effect |
 |---|---|---|
 | `ULTRON_BRIDGE_PORT` | `8787` | Port for the WebSocket + HTTP endpoints |
-| `ULTRON_MODEL` | `claude-sonnet-5-5` | The voice: answers every turn |
+| `ULTRON_MODEL` | `claude-sonnet-5-5` | The voice: answers every turn. The L panel's `model`, `effort` and `heavy` override these four until `model reset` |
 | `ULTRON_EFFORT` | `low` | The voice's reasoning effort |
 | `ULTRON_HEAVY_MODEL` | `claude-opus-5-5` | Subagent for long work; `off` removes it |
 | `ULTRON_HEAVY_EFFORT` | `high` | The subagent's reasoning effort |
@@ -238,7 +238,7 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 | `ULTRON_ALLOW_SHELL` | off | `1` lets the L panel's `!` commands run in a shell on this machine |
 | `ULTRON_SHELL` | Git Bash on Windows, else `bash` | The shell `!` commands run in |
 | `ULTRON_PASSWORD` | — | Turns on access from other devices through `/bridge`; they log in with it ([docs/remote.md](docs/remote.md)) |
-| `ULTRON_HOME` | `~/.ultron` | Where the bridge keeps which conversation to resume |
+| `ULTRON_HOME` | `~/.ultron` | Where the bridge keeps which conversation to resume, and the models chosen in the L panel |
 | `ULTRON_ALLOWED_ORIGINS` | local dev | Extra WebSocket origins to accept |
 | `ULTRON_ALLOW_NO_ORIGIN` | off | Accept connections with no `Origin` header |
 | `ULTRON_FILE_ROOTS` | — | Roots the `/file` endpoint may serve from |

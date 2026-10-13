@@ -12,6 +12,14 @@ Refactors in progress and known traps. Add a line when you find one; remove it w
 - A saved conversation that fails to resume loses the question that ran into it:
   the bridge forgets it and starts a new conversation, but the question is not
   re-asked there (pinned as-is in `bridge/test/golden/broken-resume.json`).
+- Switching models (`/brain`, `bridge/brain-route.ts`) reopens the session with
+  `resume` instead of the SDK's `Query.setModel()`: there is no setter for the
+  effort, and whether `applyFlagSettings({ effortLevel })` beats the `effort`
+  option a session started with could not be checked without a Claude login.
+  One path for every change, at the cost of restarting the MCP servers.
+- `bridge/brain-route.ts` and `bridge/shell.mjs` both decide "a page on this
+  machine" (loopback via `isRemote`, plus an Origin). Make `shell.mjs` use the
+  route's check once its characterization tests exist.
 
 ## Refactors in progress
 
