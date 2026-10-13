@@ -108,8 +108,12 @@ export class BridgeProcess {
     return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : null
   }
 
-  async http(method: string, path: string): Promise<{ status: number; body: unknown }> {
-    const res = await fetch(`http://127.0.0.1:${this.port}${path}`, { method })
+  /** One request from this machine; `origin` makes it look like a page, as the L panel is. */
+  async http(method: string, path: string, { body, origin }: { body?: unknown; origin?: string } = {}): Promise<{ status: number; body: unknown }> {
+    const headers: Record<string, string> = origin ? { origin } : {}
+    if (body !== undefined) headers['content-type'] = 'application/json'
+    const payload = body === undefined ? undefined : JSON.stringify(body)
+    const res = await fetch(`http://127.0.0.1:${this.port}${path}`, { method, headers, body: payload })
     const text = await res.text()
     const isJson = (res.headers.get('content-type') ?? '').includes('json')
     return { status: res.status, body: isJson ? JSON.parse(text) : text }

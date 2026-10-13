@@ -184,6 +184,10 @@ export class Conversation {
   /** Whether a turn is in flight, and whether it has already been told to stop. */
   private busy = false
   private stopping = false
+  /** Questions accepted but not yet handed to the brain (waiting on an interrupt to settle). */
+  private pending = 0
+  /** Called whenever a turn ends or the conversation stops, to re-check idle(). */
+  private idleWaiters: Array<() => void> = []
   /**
    * Which question the brain is currently answering.
    *
@@ -282,6 +286,24 @@ export class Conversation {
     this.finishTurn?.()
     this.finishTurn = null
     this.tools.clear()
+    this.wakeIdleWaiters()
+  }
+
+  private wakeIdleWaiters(): void {
+    const waiters = this.idleWaiters
+    this.idleWaiters = []
+    for (const wake of waiters) wake()
+  }
+
+  /** No turn is running and no question is waiting to be asked. */
+  get idle(): boolean {
+    return !this.busy && this.pending === 0
+  }
+
+  /** Resolves when it may have become idle: a turn ended or it stopped. Check idle again. */
+  whenIdle(): Promise<void> {
+    if (this.idle || this.closed) return Promise.resolve()
+    return new Promise((resolve) => this.idleWaiters.push(resolve))
   }
 
   private onStarted(e: Extract<BrainEvent, { type: 'started' }>): void {
@@ -333,6 +355,7 @@ export class Conversation {
     this.closed = true
     this.session.close()
     this.requests.cancelAll()
+    this.wakeIdleWaiters()
     this.hooks.ended(restart)
   }
 
@@ -366,7 +389,9 @@ export class Conversation {
    */
   question(socket: DeviceSocket, text: string, id: string | null, said: string): void {
     this.interrupt()
+    this.pending++
     void this.settling.then(() => {
+      this.pending--
       if (this.closed) return
       this.answering = id
       this.asker = socket
@@ -422,6 +447,23 @@ export class ConversationSlot {
   /** The conversation if one is running, without starting one. */
   get running(): Conversation | null {
     return this.current
+  }
+
+  /**
+   * Switches models: waits for the turn in flight to end, calls `apply` (which
+   * changes the brain), then carries the same conversation on in a new session.
+   * With nothing running, `apply` is all there is to do.
+   *
+   * Waiting matters twice over: an answer cut off by a model change is an
+   * answer lost, and a turn's frames say which model wrote them, so the brain
+   * must not change under a turn that is still writing.
+   */
+  async reopen(apply: () => void): Promise<void> {
+    // Checked again after every wait: a question can arrive in between, and
+    // a reopen started earlier can already have replaced the conversation.
+    while (this.current && !this.current.idle) await this.current.whenIdle()
+    apply()
+    this.current?.stop(true)
   }
 
   /** Ends the conversation and forgets it: the next one starts fresh. */

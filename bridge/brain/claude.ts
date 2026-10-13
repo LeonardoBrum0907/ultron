@@ -13,7 +13,8 @@ import { query, type Options, type Query, type SDKMessage, type SDKUserMessage }
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { BrainSettings } from '../config.ts'
+import type { BrainChoice } from '../brain-choice.ts'
+import type { BrainSettings, ModelChoice } from '../config.ts'
 import type { PersonaPrompts } from '../persona.ts'
 import { isDelegation, type ToolPolicy } from '../policy.ts'
 import type { ToolServer } from '../tools/tool.ts'
@@ -265,16 +266,16 @@ function permissionGate(policy: ToolPolicy): NonNullable<Options['canUseTool']> 
 }
 
 /** The heavy subagent. Its tool calls go through canUseTool like any other, so the write gate holds for it too. */
-function heavyAgent(settings: BrainSettings, prompts: PersonaPrompts): Options['agents'] {
-  if (!settings.heavy) return undefined
+function heavyAgent(heavy: ModelChoice | null, prompts: PersonaPrompts): Options['agents'] {
+  if (!heavy) return undefined
   return {
     heavy: {
       description:
         'Long or multi-step work: several tools in a row, research, ' +
         'browser tasks, files. Not for conversation or one quick action.',
       prompt: prompts.heavy,
-      model: settings.heavy.model,
-      effort: settings.heavy.effort,
+      model: heavy.model,
+      effort: heavy.effort,
     },
   }
 }
@@ -285,13 +286,13 @@ function sdkServers(external: ExternalServers, tools: Record<string, ToolServer>
 }
 
 interface SessionInputs extends OpenOptions {
-  settings: BrainSettings
+  choice: BrainChoice
   prompts: PersonaPrompts
   external: ExternalServers
 }
 
-function sessionOptions({ settings, prompts, external, resume, tools, policy }: SessionInputs): Options {
-  const agents = heavyAgent(settings, prompts)
+function sessionOptions({ choice, prompts, external, resume, tools, policy }: SessionInputs): Options {
+  const agents = heavyAgent(choice.heavy, prompts)
   return {
     // Everything Claude Code has configured, plus Ultron's own tools as
     // in-process servers.
@@ -325,8 +326,8 @@ function sessionOptions({ settings, prompts, external, resume, tools, policy }: 
     // Normally your own `/model` preference would decide, but that lives in
     // the settings files `settingSources: []` deliberately stops loading, so
     // without this line nothing in the project has a say at all.
-    model: settings.voice.model,
-    effort: settings.voice.effort,
+    model: choice.voice.model,
+    effort: choice.voice.effort,
     // Carry on the saved conversation. The SDK keeps the transcript on disk
     // (persistSession is its default); this only names which one.
     ...(resume ? { resume } : {}),
@@ -342,24 +343,37 @@ function sessionOptions({ settings, prompts, external, resume, tools, policy }: 
 }
 
 export interface ClaudeBrainOptions {
+  /** Where to start: settings.voice and settings.heavy, until choose() says otherwise. */
   settings: BrainSettings
-  prompts: PersonaPrompts
+  /** The persona's prompts, which name the heavy subagent only when there is one. */
+  persona: (withHeavy: boolean) => PersonaPrompts
   /** ULTRON_DEBUG=1: log every SDK message's type. */
   debug: boolean
 }
 
 /**
  * @example
- *   const brain = claudeAgentBrain({ settings: config.brain, prompts, debug: false })
+ *   const brain = claudeAgentBrain({ settings: config.brain, persona, debug: false })
  *   const session = brain.open({ resume: null, tools, policy })
  *   session.send('hello')
  */
-export function claudeAgentBrain({ settings, prompts, debug }: ClaudeBrainOptions): Brain {
+export function claudeAgentBrain({ settings, persona, debug }: ClaudeBrainOptions): Brain {
   const external = configuredServers()
+  let choice: BrainChoice = { voice: settings.voice, heavy: settings.heavy }
   return {
-    voice: settings.voice,
-    heavy: settings.heavy,
+    get voice() {
+      return choice.voice
+    },
+    get heavy() {
+      return choice.heavy
+    },
     knownServers: () => Object.keys(external),
-    open: (options) => new ClaudeSession(sessionOptions({ ...options, settings, prompts, external }), debug),
+    open: (options) => {
+      const prompts = persona(choice.heavy !== null)
+      return new ClaudeSession(sessionOptions({ ...options, choice, prompts, external }), debug)
+    },
+    choose: (next) => {
+      choice = next
+    },
   }
 }

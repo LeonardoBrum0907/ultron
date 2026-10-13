@@ -5,6 +5,7 @@
  * Which model answers, how it calls tools and where it keeps its transcript
  * are the adapter's business: brain/claude.ts runs the Claude Agent SDK.
  */
+import type { BrainChoice } from '../brain-choice.ts'
 import type { ModelChoice } from '../config.ts'
 import type { ToolPolicy } from '../policy.ts'
 import type { ToolServer } from '../tools/tool.ts'
@@ -68,4 +69,9 @@ export interface Brain {
   /** The external tool servers, known before any session starts (the HUD shows them at boot). */
   knownServers(): string[]
   open(options: OpenOptions): BrainSession
+  /**
+   * Runs the sessions opened from now on on other models. One already open
+   * keeps the models it started with: reopen it to switch.
+   */
+  choose(choice: BrainChoice): void
 }

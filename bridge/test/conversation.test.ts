@@ -204,3 +204,56 @@ test('a reset ends the conversation and forgets it', async () => {
   assert.equal(memory.forgotten, 1)
   assert.equal(slot.running, null)
 })
+
+const opus = { voice: { model: 'opus-model', effort: 'max' }, heavy: null } as const
+
+test('switching models with nothing running only changes the brain', async () => {
+  const { brain, slot } = setup()
+  await slot.reopen(() => brain.choose(opus))
+  assert.deepEqual(brain.choices, [opus])
+  assert.equal(brain.sessions.length, 0)
+})
+
+test('switching models carries the same conversation on in a new session', async () => {
+  const { brain, slot, pc, memory } = setup()
+  slot.now().question(pc, 'hello', 'a1', 'hello')
+  await settle()
+  brain.session.emit(end())
+  await settle()
+  await slot.reopen(() => brain.choose(opus))
+  assert.equal(brain.sessions.length, 2)
+  assert.equal(brain.sessions[0]?.closed, true)
+  assert.equal(brain.session.options.resume, 's1')
+  assert.equal(memory.forgotten, 0)
+})
+
+test('a switch waits for the answer in flight, which keeps the model that wrote it', async () => {
+  const { brain, slot, pc } = setup()
+  slot.now().question(pc, 'slow', 'a1', 'slow')
+  await settle()
+  const switched = slot.reopen(() => brain.choose(opus))
+  await settle()
+  assert.equal(brain.sessions.length, 1)
+  assert.deepEqual(brain.choices, [])
+  brain.session.emit(end('one'))
+  await switched
+  assert.equal(pc.ofType('done')[0]?.model, 'voice-model')
+  assert.equal(brain.sessions.length, 2)
+  assert.deepEqual(brain.choices, [opus])
+})
+
+test('a question asked while a switch waits is answered before the switch', async () => {
+  const { brain, slot, pc } = setup()
+  const first = slot.now()
+  first.question(pc, 'slow', 'a1', 'slow')
+  await settle()
+  const switched = slot.reopen(() => brain.choose(opus))
+  first.question(pc, 'fast', 'a2', 'fast')
+  brain.session.emit(end('one'))
+  await settle()
+  assert.deepEqual(brain.sessions[0]?.sent, ['slow', 'fast'])
+  assert.equal(brain.sessions.length, 1)
+  brain.session.emit(end('two'))
+  await switched
+  assert.equal(brain.sessions.length, 2)
+})

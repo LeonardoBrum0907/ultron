@@ -3,6 +3,7 @@
  * reads back what it was sent. For testing the conversation without any model.
  */
 import type { Brain, BrainEvent, BrainSession, OpenOptions } from '../../brain/brain.ts'
+import type { BrainChoice } from '../../brain-choice.ts'
 import type { ModelChoice } from '../../config.ts'
 
 export class FakeBrainSession implements BrainSession {
@@ -55,9 +56,11 @@ export class FakeBrainSession implements BrainSession {
 }
 
 export class FakeBrain implements Brain {
-  readonly voice: ModelChoice = { model: 'voice-model', effort: 'low' }
-  readonly heavy: ModelChoice | null
+  voice: ModelChoice = { model: 'voice-model', effort: 'low' }
+  heavy: ModelChoice | null
   readonly sessions: FakeBrainSession[] = []
+  /** Every choice it was handed, in order. */
+  readonly choices: BrainChoice[] = []
 
   constructor({ heavy = true }: { heavy?: boolean } = {}) {
     this.heavy = heavy ? { model: 'heavy-model', effort: 'high' } : null
@@ -65,6 +68,12 @@ export class FakeBrain implements Brain {
 
   knownServers(): string[] {
     return ['configured']
+  }
+
+  choose(choice: BrainChoice): void {
+    this.choices.push(choice)
+    this.voice = choice.voice
+    this.heavy = choice.heavy
   }
 
   open(options: OpenOptions): FakeBrainSession {

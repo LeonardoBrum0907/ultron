@@ -22,11 +22,13 @@ import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
 import { handleShell, shellInfo } from './shell.mjs'
 import { gate, handleAuth, isRemote, publicOrigin, remoteEnabled, sameOrigin } from './auth.mjs'
-import { forgetConversation, rememberConversation, savedConversation } from './memory.ts'
+import { forgetConversation, rememberConversation, savedConversation, ULTRON_DIR } from './memory.ts'
 import { toolPolicy } from './policy.ts'
 import { readBridgeConfig } from './config.ts'
 import { personaPrompts } from './persona.ts'
 import { claudeAgentBrain } from './brain/claude.ts'
+import { brainChoiceFile } from './brain-choice-file.ts'
+import { brainRoute } from './brain-route.ts'
 import { ConversationSlot } from './conversation.ts'
 import { Devices } from './devices.ts'
 import { ownTools } from './tools/own.ts'
@@ -120,15 +122,11 @@ function originAllowed(origin) {
 const ALLOW_WRITES = config.allowWrites
 const policy = toolPolicy({ allowWrites: ALLOW_WRITES })
 
-// The voice and the heavy subagent (bridge/config.ts explains the split).
-const MODEL = config.brain.voice.model
-const EFFORT = config.brain.voice.effort
-const HEAVY = config.brain.heavy !== null
-const HEAVY_MODEL = config.brain.heavy?.model ?? 'off'
-const HEAVY_EFFORT = config.brain.heavy?.effort ?? 'high'
-
-// What Ultron is and how he talks, for the voice and for the heavy subagent.
-const PROMPTS = personaPrompts({ lang: LANG, heavy: HEAVY })
+// The voice and the heavy subagent (bridge/config.ts explains the split):
+// what .env.local says, unless the L panel's `model` commands chose since.
+const ENV_CHOICE = { voice: config.brain.voice, heavy: config.brain.heavy }
+const brainFile = brainChoiceFile(ULTRON_DIR)
+const START_CHOICE = brainFile.saved() ?? ENV_CHOICE
 
 
 /**
@@ -422,6 +420,7 @@ const handleRequest = async (req, res) => {
   if (route === '/memory' || route === '/memory/reset') {
     return handleMemory(req, res, cors)
   }
+  if (route === '/brain') return handleBrain(req, res, cors)
 
   if (req.method === 'GET' && req.url === '/health') {
     // The browser reads this once at boot to decide which voice engine to use.
@@ -904,8 +903,8 @@ console.log(
     `hearing ${elevenKey() && STT_ENGINE === 'elevenlabs' ? 'ElevenLabs Scribe' : 'browser'}`,
 )
 console.log(
-  `[ultron] brain ${config.brain.kind} · model ${MODEL} · effort ${EFFORT}` +
-    (HEAVY ? ` · heavy ${HEAVY_MODEL} · effort ${HEAVY_EFFORT}` : ''),
+  `[ultron] brain ${config.brain.kind} · model ${START_CHOICE.voice.model} · effort ${START_CHOICE.voice.effort}` +
+    (START_CHOICE.heavy ? ` · heavy ${START_CHOICE.heavy.model} · effort ${START_CHOICE.heavy.effort}` : ''),
 )
 console.log(
   `[ultron] writes ${ALLOW_WRITES ? 'ENABLED' : 'disabled'}` +
@@ -931,7 +930,12 @@ console.log(
 
 // The brain, and the one conversation every app shares (bridge/conversation.ts).
 const devices = new Devices()
-const brain = claudeAgentBrain({ settings: config.brain, prompts: PROMPTS, debug: config.debug })
+// The persona: what Ultron is and how he talks, for the voice and for the heavy subagent.
+const brain = claudeAgentBrain({
+  settings: { ...config.brain, ...START_CHOICE },
+  persona: (heavy) => personaPrompts({ lang: LANG, heavy }),
+  debug: config.debug,
+})
 const conversations = new ConversationSlot({
   brain,
   devices,
@@ -939,6 +943,7 @@ const conversations = new ConversationSlot({
   memory: { saved: savedConversation, remember: rememberConversation, forget: forgetConversation },
   ownTools: (io) => ownTools({ ...io, allowWrites: ALLOW_WRITES }),
 })
+const handleBrain = brainRoute({ brain, conversations, devices, file: brainFile, defaults: ENV_CHOICE })
 
 wss.on('connection', (socket) => {
   console.log(`[ultron] client connected (${devices.size + 1} now)`)
