@@ -12,8 +12,9 @@ import { join } from 'node:path'
  * panel's `memory` command.
  */
 
-const DIR = process.env.ULTRON_HOME ?? join(homedir(), '.ultron')
-const FILE = join(DIR, 'conversa.json')
+/** Where Ultron keeps what must survive a restart: ~/.ultron, or ULTRON_HOME. */
+export const ULTRON_DIR = process.env.ULTRON_HOME ?? join(homedir(), '.ultron')
+const FILE = join(ULTRON_DIR, 'conversa.json')
 
 /** The conversation to resume, as kept in ~/.ultron/conversa.json. */
 export interface SavedConversation {
@@ -33,7 +34,7 @@ export function savedConversation(): SavedConversation | null {
 }
 
 function write(data: SavedConversation): void {
-  mkdirSync(DIR, { recursive: true })
+  mkdirSync(ULTRON_DIR, { recursive: true })
   writeFileSync(FILE, JSON.stringify(data, null, 2))
 }
 

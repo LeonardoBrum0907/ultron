@@ -9,7 +9,7 @@
 /** How hard a model thinks before it answers. */
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
-const EFFORTS: readonly Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
+export const EFFORTS: readonly Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
 /** Which model a frame came from, as the page's log panel shows it. */
 export interface ModelChoice {
