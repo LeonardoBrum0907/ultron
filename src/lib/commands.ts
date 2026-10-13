@@ -11,11 +11,12 @@
  */
 import { BRIDGE_HTTP_URL } from '../config'
 import { useStore, type Phase } from '../store'
-import { clearLog, log } from './log'
+import { clearLog } from './log'
 import { dustLevel, setDustLevel } from './dust'
 import { elevenVoiceId, setElevenVoiceId } from './tts'
 import { mind } from './mind'
 import { toneNote } from './tone'
+import { out, type Command } from './terminal-command'
 
 /** What only the app's conversation machinery can do; bound by App. */
 export type Actions = {
@@ -54,19 +55,6 @@ const bar = (v: number) => {
 }
 
 const TEST_LINE = 'Teste de voz. Se você está me ouvindo, a voz está funcionando.'
-
-type Command = {
-  name: string
-  usage: string
-  summary: string
-  /** Extra lines for `help <name>`. */
-  details?: string[]
-  /** Candidates for the argument at `index` (0 = first after the name). */
-  complete?: (index: number, args: string[]) => string[]
-  run: (args: string[]) => void | Promise<void>
-}
-
-const out = (text: string, level: 'info' | 'warn' | 'error' = 'info') => log('cmd', text, level)
 
 const need = (): Actions | null => {
   if (!actions) out('the app is not ready yet', 'error')
