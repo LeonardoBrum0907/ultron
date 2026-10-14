@@ -15,7 +15,7 @@ export const CURRENTS = 5
 // When each part sets off after the summons (s, from at over spread) and how long it flies:
 // the heart gathers first, then the fire it lights, then the smoke over the fire. The dust
 // never leaves the cloud.
-const FLIGHT = {
+export const FLIGHT = {
   core: { at: 0, spread: 1.4, dur: [2.0, 2.8] },
   halo: { at: 1.4, spread: 1.0, dur: [2.0, 2.6] },
   flame: { at: 2.0, spread: 2.4, dur: [2.0, 2.8] },
