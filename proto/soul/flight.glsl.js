@@ -7,8 +7,11 @@
 export const FLIGHT = /* glsl */ `
   // Where it rests in the dust: in the wedge its current gathers from, placed across the
   // wedge by its lane, so a stream does not tangle on its way (aMeta.zw: current, lane).
+  // The loose dust never rides a current, so it keeps an angle of its own: the currents are
+  // drawn again as the soul is formed, and a wedge would make all of it jump at once.
   vec2 restHome() {
-    float ang = uWedge[int(aMeta.z + 0.5)] + (aMeta.w - 0.5) * (2.0 * PI / 5.0);
+    float wedge = uWedge[int(aMeta.z + 0.5)] + (aMeta.w - 0.5) * (2.0 * PI / 5.0);
+    float ang = aMeta.x > 4.5 ? aMeta.w * 2.0 * PI : wedge;
     float ray = sqrt(-2.0 * log(1.0 - 0.999 * aFly.z));
     float rad = aFly.w < 0.35 ? sqrt(aFly.z) : (aFly.w < 0.8 ? 0.38 : 0.2) * ray;
     return uCloud.xy + vec2(cos(ang), sin(ang) * 0.85) * rad * uCloud.z;
