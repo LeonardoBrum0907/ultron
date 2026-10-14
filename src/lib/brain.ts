@@ -121,9 +121,8 @@ export function isConnected(): boolean {
 /**
  * Connection state, for the UI.
  *
- * Worth surfacing because in bridge mode the socket *is* the conversation: all
- * of ULTRON's memory of the exchange lives in the agent session behind it, so a
- * drop wipes the conversation while the transcript on screen still shows it.
+ * The conversation itself lives in the bridge and survives a drop; what a drop
+ * costs is the answer in flight and, while it lasts, the ability to ask.
  * Never fires on the direct path, which has no connection to lose.
  */
 export function watchConnection(
@@ -131,6 +130,18 @@ export function watchConnection(
 ): void {
   if (usingBridge) bridge.watchConnection(fn)
 }
+
+/** What another device asked and was answered, to show without speaking. */
+export function watchEcho(fn: (role: 'user' | 'ultron', text: string) => void): void {
+  if (usingBridge) bridge.watchEcho(fn)
+}
+
+/** The bridge wants a password: this page was opened from another device. */
+export function watchAuth(fn: (enabled: boolean) => void): void {
+  if (usingBridge) bridge.watchAuth(fn)
+}
+
+export const login = (password: string) => bridge.login(password)
 
 /** Labels for the HUD's SYSTEMS rail. */
 export function connectedLabels(): string[] {

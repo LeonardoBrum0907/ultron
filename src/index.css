@@ -258,7 +258,7 @@ kbd {
    places and all three have to agree: here, in ALLOWED_CLASSES in
    src/ui/Panels.tsx — anything absent from that set is stripped before it
    reaches the DOM — and in the `display` tool description in
-   bridge/panels.mjs, which is how the model learns they exist. */
+   bridge/panels.ts, which is how the model learns they exist. */
 
 .p-body {
   text-transform: none;

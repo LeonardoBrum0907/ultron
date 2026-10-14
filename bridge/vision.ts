@@ -1,4 +1,6 @@
-import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
+import { defineTool, toolServer } from './tools/tool.ts'
+import type { Frame } from './devices.ts'
+import type { AskApp } from './tools/own.ts'
 import { z } from 'zod'
 
 /**
@@ -66,12 +68,20 @@ same number of frames thinner rather than showing you more.
 Describe what you saw as a sequence — what changed between the frames — rather
 than listing them. The user knows what their own hands look like.`
 
+/** Why `ask` failed, as the model is told it: the error's message, or the thing thrown. */
+const failureOf = (err: unknown): unknown => (err as Error | null | undefined)?.message ?? err
+
+/** The face sends JPEG unless it says otherwise (src/lib/camera.ts). */
+const mimeTypeOf = (reply: Frame): string =>
+  typeof reply.mimeType === 'string' ? reply.mimeType : 'image/jpeg'
+
 /**
- * @param {(kind: string, args: object) => Promise<object>} ask
- *   Sends a request to the browser and resolves with its reply.
+ * @param ask - sends a request to the browser and resolves with its reply.
+ * @example
+ *   const eyes = visionServer((kind, args, timeoutMs) => requests.ask(kind, args, timeoutMs))
  */
-export function visionServer(ask) {
-  return createSdkMcpServer({
+export function visionServer(ask: AskApp) {
+  return toolServer({
     name: 'ultron_eyes',
     version: '1.0.0',
     instructions:
@@ -80,7 +90,7 @@ export function visionServer(ask) {
     // Behind tool search, "look at me" would find nothing and become an apology.
     alwaysLoad: true,
     tools: [
-      tool(
+      defineTool(
         'look',
         DESCRIPTION,
         {
@@ -104,7 +114,7 @@ export function visionServer(ask) {
                 {
                   type: 'text',
                   text:
-                    `Could not reach the camera: ${err?.message ?? err}. ` +
+                    `Could not reach the camera: ${failureOf(err)}. ` +
                     'Tell the user you cannot see and carry on without it.',
                 },
               ],
@@ -132,13 +142,13 @@ export function visionServer(ask) {
               {
                 type: 'image',
                 data: reply.data,
-                mimeType: reply.mimeType ?? 'image/jpeg',
+                mimeType: mimeTypeOf(reply),
               },
             ],
           }
         },
       ),
-      tool(
+      defineTool(
         'watch',
         WATCH_DESCRIPTION,
         {
@@ -183,7 +193,7 @@ export function visionServer(ask) {
               content: [
                 {
                   type: 'text',
-                  text: `Could not watch: ${err?.message ?? err}. Tell the user and carry on.`,
+                  text: `Could not watch: ${failureOf(err)}. Tell the user and carry on.`,
                 },
               ],
             }
@@ -203,7 +213,7 @@ export function visionServer(ask) {
                   'offset in seconds. Read them left to right, top to bottom — ' +
                   'they are one continuous clip, not separate pictures.',
               },
-              { type: 'image', data: reply.data, mimeType: reply.mimeType ?? 'image/jpeg' },
+              { type: 'image', data: reply.data, mimeType: mimeTypeOf(reply) },
             ],
           }
         },

@@ -25,7 +25,7 @@ can have — Node.js and Chrome. That's the whole list.
   or the platform installer at <https://docs.claude.com/en/docs/claude-code> —
   then run `claude` once and complete login. The bridge reuses that login. **No
   API key**, and usage is billed to your existing Claude account.
-- **Node.js 20 or newer** — free, one installer from <https://nodejs.org>. This
+- **Node.js 20.6 or newer** — free, one installer from <https://nodejs.org>. This
   is a Node web app, so it is the one unavoidable tool.
 - **Google Chrome or Microsoft Edge**, in a **real browser window** — not an
   embedded preview pane. Preview panes (including the one inside editors and
@@ -230,13 +230,15 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 | Variable | Default | Effect |
 |---|---|---|
 | `ULTRON_BRIDGE_PORT` | `8787` | Port for the WebSocket + HTTP endpoints |
-| `ULTRON_MODEL` | `claude-sonnet-5-5` | The voice: answers every turn |
+| `ULTRON_MODEL` | `claude-sonnet-5-5` | The voice: answers every turn. The L panel's `model`, `effort` and `heavy` override these four until `model reset` |
 | `ULTRON_EFFORT` | `low` | The voice's reasoning effort |
 | `ULTRON_HEAVY_MODEL` | `claude-opus-5-5` | Subagent for long work; `off` removes it |
 | `ULTRON_HEAVY_EFFORT` | `high` | The subagent's reasoning effort |
 | `ULTRON_ALLOW_WRITES` | off | `1` allows effectful tools (see below) |
 | `ULTRON_ALLOW_SHELL` | off | `1` lets the L panel's `!` commands run in a shell on this machine |
 | `ULTRON_SHELL` | Git Bash on Windows, else `bash` | The shell `!` commands run in |
+| `ULTRON_PASSWORD` | — | Turns on access from other devices through `/bridge`; they log in with it ([docs/remote.md](docs/remote.md)) |
+| `ULTRON_HOME` | `~/.ultron` | Where the bridge keeps which conversation to resume, and the models chosen in the L panel |
 | `ULTRON_ALLOWED_ORIGINS` | local dev | Extra WebSocket origins to accept |
 | `ULTRON_ALLOW_NO_ORIGIN` | off | Accept connections with no `Origin` header |
 | `ULTRON_FILE_ROOTS` | — | Roots the `/file` endpoint may serve from |

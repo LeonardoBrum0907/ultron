@@ -25,14 +25,15 @@ console.log('------------------------------------------------------------');
 
 // --- Node version --------------------------------------------------------
 try {
-  const major = Number(process.versions.node.split('.')[0]);
-  if (Number.isFinite(major) && major >= 20) {
-    line(tick, `Node.js ${process.versions.node} (20+ required).`);
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  // 20.6 is the first Node that can load the bridge's TypeScript through tsx.
+  if (Number.isFinite(major) && (major > 20 || (major === 20 && minor >= 6))) {
+    line(tick, `Node.js ${process.versions.node} (20.6+ required).`);
   } else {
-    line(warn, `Node.js ${process.versions.node} is below 20. Please upgrade — the bridge needs Node 20 or newer.`);
+    line(warn, `Node.js ${process.versions.node} is below 20.6. Please upgrade — the bridge needs Node 20.6 or newer.`);
   }
 } catch {
-  line(warn, 'Could not read the Node.js version. ULTRON needs Node 20 or newer.');
+  line(warn, 'Could not read the Node.js version. ULTRON needs Node 20.6 or newer.');
 }
 
 // --- Claude CLI on PATH ---------------------------------------------------

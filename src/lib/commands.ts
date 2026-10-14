@@ -11,11 +11,13 @@
  */
 import { BRIDGE_HTTP_URL } from '../config'
 import { useStore, type Phase } from '../store'
-import { clearLog, log } from './log'
+import { clearLog } from './log'
 import { dustLevel, setDustLevel } from './dust'
 import { elevenVoiceId, setElevenVoiceId } from './tts'
 import { mind } from './mind'
 import { toneNote } from './tone'
+import { BRAIN_COMMANDS } from './brain-commands'
+import { out, type Command } from './terminal-command'
 
 /** What only the app's conversation machinery can do; bound by App. */
 export type Actions = {
@@ -54,19 +56,6 @@ const bar = (v: number) => {
 }
 
 const TEST_LINE = 'Teste de voz. Se você está me ouvindo, a voz está funcionando.'
-
-type Command = {
-  name: string
-  usage: string
-  summary: string
-  /** Extra lines for `help <name>`. */
-  details?: string[]
-  /** Candidates for the argument at `index` (0 = first after the name). */
-  complete?: (index: number, args: string[]) => string[]
-  run: (args: string[]) => void | Promise<void>
-}
-
-const out = (text: string, level: 'info' | 'warn' | 'error' = 'info') => log('cmd', text, level)
 
 const need = (): Actions | null => {
   if (!actions) out('the app is not ready yet', 'error')
@@ -322,6 +311,43 @@ const COMMANDS: Command[] = [
       const t = mind.config.temper
       out(`temper    intensity ${t.intensity} · frequency ${t.frequency} · volatility ${t.volatility}`)
       out(`next turn ${toneNote() || 'no mood note (nothing stands out)'}`)
+    },
+  },
+  ...BRAIN_COMMANDS,
+  {
+    name: 'memory',
+    usage: 'memory [reset]',
+    summary: 'the conversation he remembers, or start a new one',
+    details: [
+      'memory        since when, how many turns, how many devices are connected',
+      'memory reset  forget it: the next question starts a new conversation',
+      'The conversation lives in the bridge and survives reloads and restarts.',
+    ],
+    complete: (i) => (i === 0 ? ['reset'] : []),
+    run: async ([sub]) => {
+      if (sub && sub !== 'reset') return out(`unknown: memory ${sub} (help memory)`, 'warn')
+      try {
+        if (sub === 'reset') {
+          const res = await fetch(`${BRIDGE_HTTP_URL}/memory/reset`, { method: 'POST' })
+          if (!res.ok) return out(`memory reset failed (${res.status})`, 'error')
+          return out('memory reset: the next question starts a new conversation')
+        }
+        const m = (await (await fetch(`${BRIDGE_HTTP_URL}/memory`)).json()) as {
+          id: string | null
+          since: string | null
+          turns: number
+          devices: number
+        }
+        if (!m.id) out('no conversation yet: the next question starts one')
+        else {
+          out(`since    ${new Date(m.since ?? '').toLocaleString('pt-BR')}`)
+          out(`turns    ${m.turns}`)
+          out(`session  ${m.id}`)
+        }
+        out(`devices  ${m.devices} connected`)
+      } catch {
+        out('bridge unreachable', 'error')
+      }
     },
   },
   {

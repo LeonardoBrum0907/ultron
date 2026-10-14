@@ -1,0 +1,818 @@
+{
+  "health": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "tts": false,
+      "stt": false,
+      "lang": "pt-BR",
+      "shell": {
+        "enabled": false
+      }
+    }
+  },
+  "memory": {
+    "status": 200,
+    "body": {
+      "id": "sess-new",
+      "since": "<date>",
+      "turns": 5,
+      "devices": 2
+    }
+  },
+  "saved": {
+    "id": "sess-new",
+    "since": "<date>",
+    "turns": 5
+  },
+  "reset": {
+    "status": 200,
+    "body": {
+      "ok": true
+    }
+  },
+  "pc": [
+    {
+      "type": "ready",
+      "servers": [
+        "phone",
+        "exa"
+      ]
+    },
+    {
+      "type": "ready",
+      "servers": [
+        "ultron",
+        "phone"
+      ]
+    },
+    {
+      "type": "text",
+      "delta": "Hel",
+      "ask": "a1"
+    },
+    {
+      "type": "text",
+      "delta": "lo.",
+      "ask": "a1"
+    },
+    {
+      "type": "done",
+      "text": "Hello.",
+      "costUsd": 0.01,
+      "usage": {
+        "in": 10,
+        "out": 5,
+        "cacheRead": 3,
+        "cacheWrite": 2
+      },
+      "durationMs": 42,
+      "turns": 1,
+      "escalated": false,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "heavy": null,
+      "ask": "a1"
+    },
+    {
+      "type": "heard",
+      "text": "tools",
+      "ask": "b1"
+    },
+    {
+      "type": "tool",
+      "name": "mcp__ultron__blade",
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "blade",
+      "blade": {
+        "id": "<blade-id>",
+        "title": "MARK VII",
+        "kind": "markup",
+        "html": "<p>armour</p>",
+        "mode": "reader",
+        "size": "wide",
+        "hold": "turn"
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "mcp__ultron__blade",
+      "ok": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "ui",
+      "op": "patch",
+      "args": {
+        "accent": "#ff2a2a"
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "Bash",
+      "ok": false,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "tool_result",
+      "name": "mcp__phone__make_outbound_call",
+      "ok": false,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "tool",
+      "name": "mcp__phone__ring",
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "tool_result",
+      "name": "mcp__phone__ring",
+      "ok": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "tool",
+      "name": "Agent",
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "tool_result",
+      "name": "Agent",
+      "ok": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "tool",
+      "name": "mcp__exa__search",
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "ask": "b1"
+    },
+    {
+      "type": "tool_result",
+      "name": "mcp__exa__search",
+      "ok": true,
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "ask": "b1"
+    },
+    {
+      "type": "text",
+      "delta": "Done.",
+      "ask": "b1"
+    },
+    {
+      "type": "done",
+      "text": "Done.",
+      "costUsd": 0.01,
+      "usage": {
+        "in": 10,
+        "out": 5,
+        "cacheRead": 3,
+        "cacheWrite": 2
+      },
+      "durationMs": 42,
+      "turns": 1,
+      "escalated": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "heavy": {
+        "model": "claude-opus-5-5",
+        "effort": "high"
+      },
+      "ask": "b1"
+    },
+    {
+      "type": "tool",
+      "name": "mcp__ultron_eyes__look",
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "a2"
+    },
+    {
+      "type": "capture",
+      "id": "q1",
+      "reason": "testing"
+    },
+    {
+      "type": "tool_result",
+      "name": "mcp__ultron_eyes__look",
+      "ok": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "a2"
+    },
+    {
+      "type": "text",
+      "delta": "I see image/jpeg.",
+      "ask": "a2"
+    },
+    {
+      "type": "done",
+      "text": "I see image/jpeg.",
+      "costUsd": 0.01,
+      "usage": {
+        "in": 10,
+        "out": 5,
+        "cacheRead": 3,
+        "cacheWrite": 2
+      },
+      "durationMs": 42,
+      "turns": 1,
+      "escalated": false,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "heavy": null,
+      "ask": "a2"
+    },
+    {
+      "type": "text",
+      "delta": "one",
+      "ask": "a3"
+    },
+    {
+      "type": "done",
+      "text": "one",
+      "costUsd": 0.01,
+      "usage": {
+        "in": 10,
+        "out": 5,
+        "cacheRead": 3,
+        "cacheWrite": 2
+      },
+      "durationMs": 42,
+      "turns": 1,
+      "escalated": false,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "heavy": null,
+      "ask": "a3"
+    },
+    {
+      "type": "text",
+      "delta": "Hel",
+      "ask": "a4"
+    },
+    {
+      "type": "text",
+      "delta": "lo.",
+      "ask": "a4"
+    },
+    {
+      "type": "done",
+      "text": "Hello.",
+      "costUsd": 0.01,
+      "usage": {
+        "in": 10,
+        "out": 5,
+        "cacheRead": 3,
+        "cacheWrite": 2
+      },
+      "durationMs": 42,
+      "turns": 1,
+      "escalated": false,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "heavy": null,
+      "ask": "a4"
+    },
+    {
+      "type": "error",
+      "message": "The turn ran too long and was stopped.",
+      "reason": "error_max_turns",
+      "costUsd": 0.02,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "a5"
+    },
+    {
+      "type": "ui",
+      "op": "screen",
+      "args": {
+        "what": "transcript"
+      }
+    }
+  ],
+  "phone": [
+    {
+      "type": "ready",
+      "servers": [
+        "phone",
+        "exa"
+      ]
+    },
+    {
+      "type": "heard",
+      "text": "hello",
+      "ask": "a1"
+    },
+    {
+      "type": "ready",
+      "servers": [
+        "ultron",
+        "phone"
+      ]
+    },
+    {
+      "type": "text",
+      "delta": "Hel",
+      "ask": "a1"
+    },
+    {
+      "type": "text",
+      "delta": "lo.",
+      "ask": "a1"
+    },
+    {
+      "type": "done",
+      "text": "Hello.",
+      "costUsd": 0.01,
+      "usage": {
+        "in": 10,
+        "out": 5,
+        "cacheRead": 3,
+        "cacheWrite": 2
+      },
+      "durationMs": 42,
+      "turns": 1,
+      "escalated": false,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "heavy": null,
+      "ask": "a1"
+    },
+    {
+      "type": "tool",
+      "name": "mcp__ultron__blade",
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "blade",
+      "blade": {
+        "id": "<blade-id>",
+        "title": "MARK VII",
+        "kind": "markup",
+        "html": "<p>armour</p>",
+        "mode": "reader",
+        "size": "wide",
+        "hold": "turn"
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "mcp__ultron__blade",
+      "ok": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "ui",
+      "op": "patch",
+      "args": {
+        "accent": "#ff2a2a"
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "Bash",
+      "ok": false,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "tool_result",
+      "name": "mcp__phone__make_outbound_call",
+      "ok": false,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "tool",
+      "name": "mcp__phone__ring",
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "tool_result",
+      "name": "mcp__phone__ring",
+      "ok": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "tool",
+      "name": "Agent",
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "tool_result",
+      "name": "Agent",
+      "ok": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "b1"
+    },
+    {
+      "type": "tool",
+      "name": "mcp__exa__search",
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "ask": "b1"
+    },
+    {
+      "type": "tool_result",
+      "name": "mcp__exa__search",
+      "ok": true,
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "ask": "b1"
+    },
+    {
+      "type": "text",
+      "delta": "Done.",
+      "ask": "b1"
+    },
+    {
+      "type": "done",
+      "text": "Done.",
+      "costUsd": 0.01,
+      "usage": {
+        "in": 10,
+        "out": 5,
+        "cacheRead": 3,
+        "cacheWrite": 2
+      },
+      "durationMs": 42,
+      "turns": 1,
+      "escalated": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "heavy": {
+        "model": "claude-opus-5-5",
+        "effort": "high"
+      },
+      "ask": "b1"
+    },
+    {
+      "type": "heard",
+      "text": "look",
+      "ask": "a2"
+    },
+    {
+      "type": "tool",
+      "name": "mcp__ultron_eyes__look",
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "a2"
+    },
+    {
+      "type": "tool_result",
+      "name": "mcp__ultron_eyes__look",
+      "ok": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "a2"
+    },
+    {
+      "type": "text",
+      "delta": "I see image/jpeg.",
+      "ask": "a2"
+    },
+    {
+      "type": "done",
+      "text": "I see image/jpeg.",
+      "costUsd": 0.01,
+      "usage": {
+        "in": 10,
+        "out": 5,
+        "cacheRead": 3,
+        "cacheWrite": 2
+      },
+      "durationMs": 42,
+      "turns": 1,
+      "escalated": false,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "heavy": null,
+      "ask": "a2"
+    },
+    {
+      "type": "heard",
+      "text": "slow",
+      "ask": "a3"
+    },
+    {
+      "type": "text",
+      "delta": "one",
+      "ask": "a3"
+    },
+    {
+      "type": "done",
+      "text": "one",
+      "costUsd": 0.01,
+      "usage": {
+        "in": 10,
+        "out": 5,
+        "cacheRead": 3,
+        "cacheWrite": 2
+      },
+      "durationMs": 42,
+      "turns": 1,
+      "escalated": false,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "heavy": null,
+      "ask": "a3"
+    },
+    {
+      "type": "heard",
+      "text": "hello",
+      "ask": "a4"
+    },
+    {
+      "type": "text",
+      "delta": "Hel",
+      "ask": "a4"
+    },
+    {
+      "type": "text",
+      "delta": "lo.",
+      "ask": "a4"
+    },
+    {
+      "type": "done",
+      "text": "Hello.",
+      "costUsd": 0.01,
+      "usage": {
+        "in": 10,
+        "out": 5,
+        "cacheRead": 3,
+        "cacheWrite": 2
+      },
+      "durationMs": 42,
+      "turns": 1,
+      "escalated": false,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "heavy": null,
+      "ask": "a4"
+    },
+    {
+      "type": "heard",
+      "text": "fail",
+      "ask": "a5"
+    },
+    {
+      "type": "error",
+      "message": "The turn ran too long and was stopped.",
+      "reason": "error_max_turns",
+      "costUsd": 0.02,
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "ask": "a5"
+    },
+    {
+      "type": "ui",
+      "op": "screen",
+      "args": {
+        "what": "transcript"
+      }
+    }
+  ],
+  "sdk": [
+    {
+      "event": "query",
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "resume": null,
+      "systemPrompt": "27c4c3526a2c",
+      "cwdIsHome": true,
+      "settingSources": [],
+      "maxTurns": 24,
+      "permissionMode": "default",
+      "includePartialMessages": true,
+      "servers": [
+        "exa",
+        "phone",
+        "ultron",
+        "ultron_chrome",
+        "ultron_eyes",
+        "ultron_ui"
+      ],
+      "inProcess": {
+        "ultron": [
+          "display",
+          "blade",
+          "probe_url"
+        ],
+        "ultron_ui": [
+          "ui_theme",
+          "ui_chrome",
+          "ui_screen",
+          "ui_reset"
+        ],
+        "ultron_chrome": [
+          "chrome_status",
+          "chrome_tabs",
+          "chrome_navigate",
+          "chrome_read_page",
+          "chrome_page_text",
+          "chrome_find",
+          "chrome_screenshot",
+          "chrome_scroll",
+          "chrome_console",
+          "chrome_network"
+        ],
+        "ultron_eyes": [
+          "look",
+          "watch"
+        ]
+      },
+      "agents": {
+        "heavy": {
+          "model": "claude-opus-5-5",
+          "effort": "high",
+          "description": "Long or multi-step work: several tools in a row, research, browser tasks, files. Not for conversation or one quick action.",
+          "prompt": "93710b15cbd8"
+        }
+      }
+    },
+    {
+      "event": "user",
+      "text": "<mood>calm, a little bored</mood>\nhello"
+    },
+    {
+      "event": "user",
+      "text": "tools"
+    },
+    {
+      "event": "canUseTool",
+      "tool": "mcp__ultron__blade",
+      "behavior": "allow"
+    },
+    {
+      "event": "toolReply",
+      "tool": "mcp__ultron__blade",
+      "isError": false,
+      "content": [
+        {
+          "type": "text",
+          "text": "Open on the blades as \"MARK VII\"."
+        }
+      ]
+    },
+    {
+      "event": "toolReply",
+      "tool": "mcp__ultron_ui__ui_theme",
+      "isError": false,
+      "content": [
+        {
+          "type": "text",
+          "text": "Interface retinted."
+        }
+      ]
+    },
+    {
+      "event": "canUseTool",
+      "tool": "Bash",
+      "behavior": "deny"
+    },
+    {
+      "event": "canUseTool",
+      "tool": "mcp__phone__make_outbound_call",
+      "behavior": "deny"
+    },
+    {
+      "event": "canUseTool",
+      "tool": "Agent",
+      "behavior": "allow"
+    },
+    {
+      "event": "canUseTool",
+      "tool": "mcp__exa__search",
+      "behavior": "allow"
+    },
+    {
+      "event": "user",
+      "text": "look"
+    },
+    {
+      "event": "toolReply",
+      "tool": "mcp__ultron_eyes__look",
+      "isError": false,
+      "content": [
+        {
+          "type": "text",
+          "text": "One frame from the camera:"
+        },
+        {
+          "type": "image",
+          "data": "AAAA",
+          "mimeType": "image/jpeg"
+        }
+      ]
+    },
+    {
+      "event": "user",
+      "text": "slow"
+    },
+    {
+      "event": "interrupt"
+    },
+    {
+      "event": "user",
+      "text": "hello"
+    },
+    {
+      "event": "user",
+      "text": "fail"
+    },
+    {
+      "event": "close"
+    },
+    {
+      "event": "query",
+      "model": "claude-sonnet-5-5",
+      "effort": "low",
+      "resume": null,
+      "systemPrompt": "27c4c3526a2c",
+      "cwdIsHome": true,
+      "settingSources": [],
+      "maxTurns": 24,
+      "permissionMode": "default",
+      "includePartialMessages": true,
+      "servers": [
+        "exa",
+        "phone",
+        "ultron",
+        "ultron_chrome",
+        "ultron_eyes",
+        "ultron_ui"
+      ],
+      "inProcess": {
+        "ultron": [
+          "display",
+          "blade",
+          "probe_url"
+        ],
+        "ultron_ui": [
+          "ui_theme",
+          "ui_chrome",
+          "ui_screen",
+          "ui_reset"
+        ],
+        "ultron_chrome": [
+          "chrome_status",
+          "chrome_tabs",
+          "chrome_navigate",
+          "chrome_read_page",
+          "chrome_page_text",
+          "chrome_find",
+          "chrome_screenshot",
+          "chrome_scroll",
+          "chrome_console",
+          "chrome_network"
+        ],
+        "ultron_eyes": [
+          "look",
+          "watch"
+        ]
+      },
+      "agents": {
+        "heavy": {
+          "model": "claude-opus-5-5",
+          "effort": "high",
+          "description": "Long or multi-step work: several tools in a row, research, browser tasks, files. Not for conversation or one quick action.",
+          "prompt": "93710b15cbd8"
+        }
+      }
+    }
+  ]
+}

@@ -71,7 +71,19 @@ export const BACKEND: 'bridge' | 'direct' = choice(
  * `wss://` maps to `https://` on its own, which is why this is a prefix swap
  * rather than a hardcoded scheme.
  */
-export const BRIDGE_WS_URL = str(import.meta.env.VITE_BRIDGE_URL) ?? 'ws://localhost:8787'
+export const BRIDGE_WS_URL = str(import.meta.env.VITE_BRIDGE_URL) ?? defaultBridge()
+
+/**
+ * On this PC the page talks to the bridge directly. Anywhere else (a phone on
+ * Tailscale, another computer) the page was served through the Vite dev
+ * server, which proxies `/bridge` to it: same origin, so the login cookie and
+ * HTTPS come along for free (docs/remote.md).
+ */
+function defaultBridge(): string {
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
+  if (local) return 'ws://localhost:8787'
+  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/bridge`
+}
 export const BRIDGE_HTTP_URL = BRIDGE_WS_URL.replace(/^ws/, 'http')
 
 /**
