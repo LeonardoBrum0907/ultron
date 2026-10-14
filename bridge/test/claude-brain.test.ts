@@ -67,6 +67,17 @@ test('an error result fails the turn with a sentence to speak', () => {
   assert.equal(failed?.type === 'turn_failed' ? failed.message : null, 'The turn ended without an answer.')
 })
 
+test('an API error the SDK reports as a success fails the turn, with the error to show', () => {
+  // How the API refusing a model came back on SDK 0.3.220: subtype success,
+  // flagged is_error, no streamed text. Read as a finished turn, Ultron went mute.
+  const refused = 'API Error: 400 Claude Code 2.1.220 does not support this model; version 2.1.280 or newer is required.'
+  const result = sdk({ type: 'result', subtype: 'success', is_error: true, session_id: 's1', result: refused, total_cost_usd: 0 })
+  assert.deepEqual(sdkEvents(result, new Set()), [{ type: 'turn_failed', reason: 'api_error', message: refused, costUsd: 0 }])
+  const blank = sdk({ type: 'result', subtype: 'success', is_error: true, result: '' })
+  const [failed] = sdkEvents(blank, new Set())
+  assert.equal(failed?.type === 'turn_failed' ? failed.message : null, 'The turn ended without an answer.')
+})
+
 test('init starts the session with the servers that can be used', () => {
   const init = sdk({
     type: 'system', subtype: 'init', session_id: 's1',

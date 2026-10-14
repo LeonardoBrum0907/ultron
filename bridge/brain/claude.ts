@@ -129,13 +129,26 @@ function usageOf(usage: Record<string, number | null | undefined> | undefined): 
 // `result` field at all, so reporting them as a finished turn with empty text
 // is indistinguishable from a turn that simply had nothing to say — the HUD
 // stops spinning and ULTRON stands there silent. Say what happened instead.
+function failedResult(msg: Extract<SDKMessage, { type: 'result' }>): BrainEvent | null {
+  const fallback = RESULT_FAILURES.default ?? ''
+  const costUsd = msg.total_cost_usd ?? null
+  if (msg.subtype !== 'success') {
+    return { type: 'turn_failed', reason: msg.subtype, message: RESULT_FAILURES[msg.subtype] ?? fallback, costUsd }
+  }
+  // The API refusing the request (a model this Claude Code is too old for, an
+  // overload) still arrives as 'success', flagged is_error, with the error as
+  // the result and nothing streamed. Its own words are what tells you why.
+  if (msg.is_error) return { type: 'turn_failed', reason: 'api_error', message: msg.result || fallback, costUsd }
+  return null
+}
+
 function fromResult(msg: Extract<SDKMessage, { type: 'result' }>, seen: Set<string>): BrainEvent[] {
   // One turn's tool ids are never referred to again.
   seen.clear()
-  if (msg.subtype !== 'success') {
-    const message = RESULT_FAILURES[msg.subtype] ?? RESULT_FAILURES.default ?? ''
-    return [{ type: 'turn_failed', reason: msg.subtype, message, costUsd: msg.total_cost_usd ?? null }]
-  }
+  const failed = failedResult(msg)
+  if (failed) return [failed]
+  // Only narrows the type: failedResult already took every other subtype.
+  if (msg.subtype !== 'success') return []
   return [{
     type: 'turn_end',
     sessionId: msg.session_id || null,
@@ -233,6 +246,9 @@ class ClaudeSession implements BrainSession {
       if (this.debug) console.log('[msg]', msg.type, msg.type === 'stream_event' ? msg.event.type : '')
       if (msg.type === 'result' && msg.subtype !== 'success') {
         console.error(`[ultron] turn failed: ${msg.subtype}`, msg.errors ?? '')
+      }
+      if (msg.type === 'result' && msg.subtype === 'success' && msg.is_error) {
+        console.error(`[ultron] turn failed: ${msg.result}`)
       }
       yield* sdkEvents(msg, this.seen)
     }

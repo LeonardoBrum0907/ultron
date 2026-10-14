@@ -17,6 +17,10 @@ Refactors in progress and known traps. Add a line when you find one; remove it w
   effort, and whether `applyFlagSettings({ effortLevel })` beats the `effort`
   option a session started with could not be checked without a Claude login.
   One path for every change, at the cost of restarting the MCP servers.
+- The Agent SDK bundles its own Claude Code, and a new model can need a newer
+  one: on SDK 0.3.220 (Claude Code 2.1.220) the API refused Opus 5.5, which asks
+  for 2.1.280+. Before offering a new model id, check the SDK is new enough.
+  That refusal arrives as a `success` result flagged `is_error`, not an error.
 - `bridge/brain-route.ts` and `bridge/shell.mjs` both decide "a page on this
   machine" (loopback via `isRemote`, plus an Origin). Make `shell.mjs` use the
   route's check once its characterization tests exist.
