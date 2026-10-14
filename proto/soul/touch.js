@@ -1,9 +1,7 @@
 // The cursor on the soul: its recent path (uTrail: the shader's stir pushes the particles
-// it passed aside, and they drift back as the wake closes), and the gust its movement sends
-// through the fire (uWind, which leans the flames and the smoke, more the higher they are).
+// it passed aside, and they drift back as the wake closes). That push is all it does: the
+// fire keeps to its own sway, it does not follow the cursor (Léo asked for that).
 
-const WIND_FADE = 0.7 // s for the cursor's gust to die down
-const WIND_MAX = 1.6 // world units the tips can be pushed
 const SPEED_EASE = 10 // how quickly the cursor's measured speed follows it, 1/s
 const SPEED_MAX = 8 // world units/s the wake takes from the cursor at most
 export const TRAIL_N = 8 // the shader's uTrail is this long
@@ -13,7 +11,7 @@ const TRAIL_FADE = 0.45 // s for a sample's wake to close
 /**
  * @typedef {object} Touch
  * @property {(xPx: number, yPx: number) => void} move the cursor is here now (CSS px)
- * @property {(dt: number, uniforms: object) => void} tick eases it and sets uTrail and uWind
+ * @property {(dt: number, uniforms: object) => void} tick eases it and sets uTrail
  */
 
 /**
@@ -23,7 +21,7 @@ const TRAIL_FADE = 0.45 // s for a sample's wake to close
  * @example const touch = createTouch(view, 3); touch.move(640, 400); touch.tick(0.016, uniforms)
  */
 export function createTouch(view, yMid) {
-  const s = { x: 0, y: -100, dx: 0, dy: 0, vx: 0, vy: 0, windX: 0, windY: 0, seen: false, clock: 0, sampledAt: 0 }
+  const s = { x: 0, y: -100, dx: 0, dy: 0, vx: 0, vy: 0, seen: false, clock: 0, sampledAt: 0 }
   const trail = [] // newest first: { x, y, vx, vy, at }
   return {
     move(xPx, yPx) {
@@ -36,12 +34,10 @@ export function createTouch(view, yMid) {
     tick(dt, uniforms) {
       s.clock += dt
       easeSpeed(s, dt)
-      gust(s, dt)
       sample(s, trail)
       // The path starts where the cursor is now and runs back through its samples.
       const path = [{ x: s.x, y: s.y, vx: s.vx, vy: s.vy, at: s.clock }, ...trail]
       uniforms.uTrail.value.forEach((v, i) => setSample(v, path[i], s.clock))
-      uniforms.uWind.value.set(s.windX, s.windY)
     },
   }
 }
@@ -51,6 +47,8 @@ function easeSpeed(s, dt) {
   const step = Math.max(dt, 1e-3)
   s.vx += (s.dx / step - s.vx) * k
   s.vy += (s.dy / step - s.vy) * k
+  s.dx = 0
+  s.dy = 0
 }
 
 // Every TRAIL_STEP the cursor leaves a sample of where it is and how fast it goes.
@@ -68,14 +66,4 @@ function setSample(v, sample, clock) {
   if (!sample) return v.set(0, -100, 0, 0)
   const fade = Math.exp(-(clock - sample.at) / TRAIL_FADE)
   v.set(sample.x, sample.y, sample.vx * fade, sample.vy * fade)
-}
-
-function gust(s, dt) {
-  const fade = Math.exp(-dt / WIND_FADE)
-  s.windX = s.windX * fade + s.dx * 0.35
-  s.windY = s.windY * fade + s.dy * 0.35
-  const len = Math.hypot(s.windX, s.windY)
-  if (len > WIND_MAX) [s.windX, s.windY] = [(s.windX / len) * WIND_MAX, (s.windY / len) * WIND_MAX]
-  s.dx = 0
-  s.dy = 0
 }

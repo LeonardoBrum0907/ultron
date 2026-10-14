@@ -111,7 +111,6 @@ function makeUniforms() {
     uTrail: { value: Array.from({ length: TRAIL_N }, () => new THREE.Vector4(0, -100, 0, 0)) },
     uFlare: { value: 0 },
     uLevel: { value: 0 },
-    uWind: { value: new THREE.Vector2() },
     uHot: { value: new THREE.Color() },
     uMid: { value: new THREE.Color() },
     uCool: { value: new THREE.Color() },

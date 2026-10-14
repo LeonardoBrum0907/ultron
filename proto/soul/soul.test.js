@@ -149,11 +149,10 @@ class FakeUniforms {
   constructor() {
     const v4 = () => ({ set(x, y, z, w) { Object.assign(this, { x, y, z, w }) } })
     this.uTrail = { value: Array.from({ length: TRAIL_N }, v4) }
-    this.uWind = { value: { set(x, y) { Object.assign(this, { x, y }) } } }
   }
 }
 
-test('the cursor leaves a trail in world units, newest first, and a gust the way it went', () => {
+test('the cursor leaves a trail in world units, newest first, with the way it went', () => {
   const view = { pxPerUnit: 100, vw: 1000, vh: 800 }
   const touch = createTouch(view, 3)
   const u = new FakeUniforms()
@@ -164,5 +163,4 @@ test('the cursor leaves a trail in world units, newest first, and a gust the way
   const [now] = u.uTrail.value
   assert.deepEqual([now.x, now.y], [1, 3])
   assert.ok(now.z > 0 && Math.abs(now.w) < 1e-9, 'moving right')
-  assert.ok(u.uWind.value.x > 0)
 })

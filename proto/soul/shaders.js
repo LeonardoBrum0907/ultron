@@ -22,7 +22,6 @@ const UNIFORMS = /* glsl */ `
   uniform vec4  uTrail[8];  // the cursor's recent path, newest first: xy where, zw its velocity faded by age (touch.js)
   uniform float uFlare;   // a click's flare: 1 just now, fading to 0
   uniform float uLevel;   // the microphone, 0..1
-  uniform vec2  uWind;    // world units the cursor's movement pushes the tips
   uniform vec3  uHot;     // the palette: white-hot core ..
   uniform vec3  uMid;     // .. the flame's own colour ..
   uniform vec3  uCool;    // .. and its cooling edges, the smoke and the dust

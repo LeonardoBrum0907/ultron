@@ -1,6 +1,6 @@
 // The soul eater's page (soul.html): the soul and its controls. It starts as dust: a click
-// summons it, and once formed a click flares the fire. The cursor stirs the dust and fans
-// the fire, D dissolves it (or summons it), R dissolves and summons it again with new
+// summons it, and once formed a click flares the fire. The cursor pushes aside the particles
+// it passes, D dissolves it (or summons it), R dissolves and summons it again with new
 // currents, P changes its colour, M lets the microphone feed it, H hides the text and U
 // goes back to Ultron's own demo.
 

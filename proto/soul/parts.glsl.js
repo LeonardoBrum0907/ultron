@@ -14,8 +14,6 @@ export const PARTS = /* glsl */ `
     float lean = smoothstep(0.6, 4.5, y);
     return lean * (0.30 * sin(y * 0.85 - uTime * 1.3) + 0.12 * sin(y * 2.1 - uTime * 2.4 + 1.3));
   }
-  // How much of the cursor's push a particle at this height feels: the base stays put.
-  float windAt(float y) { return pow(smoothstep(0.3, 6.0, y), 1.4); }
 
   // How far through its life a particle of the fire is, 0..1 over and over. Its clock starts
   // when it lands (aFly: set off + flight), so the fire lights from the heart up as the
@@ -47,7 +45,7 @@ export const PARTS = /* glsl */ `
     float y = mix(shape.x, shape.y, v) * breath;
     float across = fract(r.y * 2.0); // 0 its middle .. 1 its edge
     float x = side * (r.w < 0.4 ? pow(across, 0.25) : across) * width; // some crowd the edge: the outline
-    x += 0.18 * v * snoise(vec3(v * 2.0 - uTime * 1.2, layer * 7.0, 1.0)) + sway(y) + uWind.x * windAt(y);
+    x += 0.18 * v * snoise(vec3(v * 2.0 - uTime * 1.2, layer * 7.0, 1.0)) + sway(y);
     float ends = smoothstep(0.0, 0.06, rise) * (1.0 - smoothstep(0.88, 1.0, v)); // it fades at its tip, not halfway up
     float glow = 1.0 + 5.0 * (breath - 1.0) * (1.0 - 0.5 * layer); // brighter as it breathes in, the ember most
     float alpha = (layer < 0.5 ? 0.3 : (layer < 1.5 ? 0.24 : 0.12)) * ends * glow;
@@ -84,8 +82,8 @@ export const PARTS = /* glsl */ `
     float x = born.x * 1.06 * bulge * pow(1.0 - smoothstep(0.5, 5.8, y), 0.85) + (r.z - 0.5) * 0.06;
     float amp = 0.10 + 0.55 * smoothstep(0.3, 4.3, y);
     vec3 q = vec3(x * 0.6, y * 0.5 - uTime * 0.95, uTime * 0.2);
-    x += snoise(q) * amp + sway(y) + uWind.x * windAt(y);
-    y += snoise(q + 19.1) * amp * 0.3 + uWind.y * windAt(y) * 0.3;
+    x += snoise(q) * amp + sway(y);
+    y += snoise(q + 19.1) * amp * 0.3;
     x += snoise(vec3(w * 37.0, y * 0.9 - uTime * 1.4, uTime * 0.35)) * (0.05 + 0.4 * amp);
     float stray = step(0.9, fract(w * 23.7)) * smoothstep(0.25, 1.0, life);
     x += sign(born.x + 0.01) * stray * stray * (0.8 + 1.4 * fract(w * 51.3));
@@ -104,7 +102,7 @@ export const PARTS = /* glsl */ `
     float amp = 0.12 + 0.11 * s;
     float y0 = 2.4 + s;
     vec2 xy = vec2(amp * sin(phase) + 0.25 * sin(0.7 * s - uTime * 0.45), y0 + amp * 0.55 * cos(phase));
-    xy.x += sway(y0) + uWind.x * windAt(y0);
+    xy.x += sway(y0);
     xy += (r.yz - 0.5) * (0.06 + 0.07 * s);
     xy += vec2(snoise(vec3(xy * 0.8, uTime * 0.3)), snoise(vec3(w * 41.0, s, uTime * 0.4)) * 0.5) * 0.09 * s;
     float alpha = 0.07 * smoothstep(0.05, 0.3, life) * pow(1.0 - life, 1.6);
@@ -116,7 +114,7 @@ export const PARTS = /* glsl */ `
     float life = lifeAt(mix(0.12, 0.28, r.x), w);
     float y = 0.6 + r.z * 0.8 + life * (3.5 + 2.0 * r.w) * (1.0 + 0.6 * uFlare);
     float drift = (r.y - 0.5) * 1.2 * (1.0 + life) + 0.25 * sin(uTime * (1.0 + r.w) + w * 40.0) * life;
-    float x = drift + sway(y) * 0.6 + uWind.x * windAt(y);
+    float x = drift + sway(y) * 0.6;
     float twinkle = 0.55 + 0.45 * sin(uTime * (6.0 + 6.0 * r.x) + w * 60.0);
     float alpha = 0.9 * twinkle * smoothstep(0.0, 0.1, life) * (1.0 - life);
     return Spark(vec2(x, y), 0.03 + 0.03 * r.w, alpha, 0.9 - 0.5 * life);
