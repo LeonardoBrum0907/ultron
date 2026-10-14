@@ -25,7 +25,8 @@
       .status { top: 26px; right: 28px; text-align: right; font-size: 11px; opacity: 0.8; line-height: 1.8; }
       .status b { color: var(--amber); font-weight: normal; }
       .hint { bottom: 18px; left: 16px; right: 16px; text-align: center; font-size: 10px; opacity: 0.32; }
-      body.bare .hud { opacity: 0; }
+      .summon { bottom: 15%; left: 0; right: 0; text-align: center; font-size: 13px; letter-spacing: 0.5em; opacity: 0.6; }
+      body.bare .hud { opacity: 0 !important; }
       #err { position: fixed; inset: 0; display: none; place-items: center; text-align: center; color: #ff8a65; padding: 40px; }
     </style>
   </head>
@@ -33,8 +34,9 @@
     <canvas id="gl"></canvas>
 
     <div class="hud title">U.L.T.R.O.N.<small>soul eater</small></div>
-    <div class="hud status">palette: <b id="palette">blue</b><br />mic: <b id="mic">off</b><br /><span id="count"></span></div>
-    <div class="hud hint">move the cursor to fan the fire · click to flare · P palette · M microphone · H hide text · U back to Ultron</div>
+    <div class="hud status">soul: <b id="mode">dust</b><br />palette: <b id="palette">blue</b><br />mic: <b id="mic">off</b><br /><span id="count"></span></div>
+    <div class="hud summon" id="summon">click to summon</div>
+    <div class="hud hint">click to summon, then to flare · the cursor stirs the dust and fans the fire · D dissolve · R summon again · P palette · M microphone · H hide text · U back to Ultron</div>
 
     <div id="err"></div>
     <script type="module" src="./soul/main.js"></script>
