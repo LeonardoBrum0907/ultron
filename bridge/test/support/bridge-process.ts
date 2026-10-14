@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url'
 import { WebSocket } from 'ws'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
-const HOOKS = fileURLToPath(new URL('./fake-sdk-hooks.mjs', import.meta.url))
+// A file: URL, not a path: on Windows `--import C:\...` is refused as an
+// unknown URL scheme ("c:"), which took down every test that starts the bridge.
+const HOOKS = new URL('./fake-sdk-hooks.mjs', import.meta.url).href
 
 /** The bridge entry point every test starts. */
 export const BRIDGE_ENTRY = 'bridge/server.mjs'
@@ -20,6 +22,9 @@ function pinnedEnv(home: string, port: number, extra: Record<string, string>) {
   return {
     PATH: process.env.PATH ?? '',
     SYSTEMROOT: process.env.SYSTEMROOT ?? '',
+    // Windows finds its temp folder here; without them it falls back to one under C:\Windows.
+    TEMP: process.env.TEMP ?? '',
+    TMP: process.env.TMP ?? '',
     HOME: home,
     USERPROFILE: home,
     ULTRON_HOME: join(home, '.ultron'),
