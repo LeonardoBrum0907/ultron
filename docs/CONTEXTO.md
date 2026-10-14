@@ -108,9 +108,13 @@ caso ela inventa a sua), e o clique na poeira liga o app. Os ganchos de dev fica
   vertex shader para todas as camadas. A audição (microfone e voz simulada) fica em
   `proto/hearing.js`.
 - **Soul Eater:** `http://localhost:5173/proto/soul.html` (ou S na demo) é outro personagem
-  de partículas: um orbe com chamas e fumaça, tudo no shader de `proto/soul/`. O cursor
-  abana o fogo, o clique faz ele crescer, P troca a cor e M deixa o microfone alimentar as
-  chamas. Testes da parte de CPU: `node --test proto/soul/soul.test.js`.
+  de partículas: um orbe com chamas e fumaça, tudo no shader de `proto/soul/`. Começa como
+  poeira em repouso; o clique invoca a alma, que se monta com cinco correntes de vento como o
+  Ultron (o orbe primeiro, depois as chamas, por último a fumaça). Montada, o clique faz o
+  fogo crescer, o cursor abre um rastro na poeira e abana as chamas, D desfaz em poeira, R
+  desfaz e monta de novo com correntes novas, P troca a cor e M deixa o microfone alimentar
+  as chamas. `window.__soul.hold(s)` congela a montagem num instante (prints). Os testes da
+  parte de CPU rodam no `npm test`.
 
 ### 4.1 Arte
 
