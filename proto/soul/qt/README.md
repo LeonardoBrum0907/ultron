@@ -2,8 +2,8 @@
 
 A alma do `proto/soul/` como um widget nativo do Qt 6: `SoulAvatarWidget`, um
 `QOpenGLWidget` que desenha ao vivo, com o mesmo shader de partículas das páginas web,
-já montada e com fundo transparente. O estado escolhe a cor (com a troca gradual, subindo do
-coração), a altura e o ritmo do fogo.
+já montada e com fundo transparente. O estado escolhe a cor (com a troca gradual, nascendo
+embaixo da brasa), a altura e o ritmo do fogo.
 
 ## Compilar
 

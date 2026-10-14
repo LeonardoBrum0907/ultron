@@ -1,21 +1,24 @@
 // The soul's colour, and how it changes: not all at once, but like a fire whose
-// temperature changes. The new colour starts in the heart and climbs through the flames
-// to the smoke, then spreads out through the dust, each particle turning on its own; a
-// brighter band runs along where it is turning (shaders.js). The CPU keeps the palette it
+// temperature changes. The new colour is born at one point, the bottom of the ember (where
+// Léo marked it), and spreads from there: up the heart and the flames faster than down or
+// sideways, along a ragged front, to the smoke and then out through the dust, each particle
+// turning on its own; a brighter band runs along where it is turning (shaders.js). The CPU keeps the palette it
 // was and the one it is becoming, and how long ago it began (uShift).
 
 import { SOUL_PALETTES } from './palettes.js'
 
 /** How the change spreads (the shader is built from these, so they agree). */
 export const TINT = {
-  pace: 0.3, // s it takes to climb one world unit away from the heart
+  from: [0, -0.75], // world xy where the change is born: the bottom of the ember
+  pace: 0.3, // s it takes to spread one world unit (up runs faster, down and sideways slower)
   reach: 9, // world units: past this, the dust turns all about together
-  spread: 0.6, // s: how far apart neighbours start to turn
+  rough: 0.5, // s: how far a ragged front runs ahead or behind, away from where it is born
+  spread: 0.6, // s: how far apart neighbours start to turn, away from where it is born
   turn: 1.0, // s each particle takes to turn
   hurry: 3, // a change picked while another runs speeds that one up this much
 }
 /** s after it begins when every particle has turned. */
-TINT.settle = TINT.pace * TINT.reach + TINT.spread + TINT.turn
+TINT.settle = TINT.pace * TINT.reach + TINT.rough + TINT.spread + TINT.turn
 
 /**
  * @typedef {object} Tint

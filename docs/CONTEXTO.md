@@ -113,8 +113,8 @@ caso ela inventa a sua), e o clique na poeira liga o app. Os ganchos de dev fica
   alma, que se monta com cinco correntes de vento como o Ultron (o coração primeiro, depois
   as chamas, por último a fumaça). Montada, o clique faz o fogo crescer, o cursor empurra as
   partículas por onde passa, D desfaz em poeira, R desfaz e monta de novo com correntes
-  novas, P troca a cor (aos poucos, subindo do coração para as chamas, como fogo mudando de
-  temperatura) e M deixa o microfone alimentar as chamas. `window.__soul.hold(s)` congela a
+  novas, P troca a cor (aos poucos, nascendo num ponto embaixo da brasa e se espalhando
+  dali para as chamas, como fogo mudando de temperatura) e M deixa o microfone alimentar as chamas. `window.__soul.hold(s)` congela a
   montagem num instante (prints). Os testes da parte de CPU rodam no `npm test`.
 - **Soul avatar:** `http://localhost:5173/proto/avatar.html` (ou A no Soul Eater) mostra a
   alma como componente web, `<soul-avatar state="calm">`, já montada, sem poeira e com fundo

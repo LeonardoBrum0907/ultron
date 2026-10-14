@@ -9,6 +9,7 @@ import { DESTINATIONS, rollCurrents } from './currents.js'
 import { ASSEMBLY_END, buildSwarm, CURRENTS, PART, routeOf, seededRandom, SOUL_BUDGET } from './swarm.js'
 import { createTouch, TRAIL_N } from './touch.js'
 import { createTint, TINT } from './tint.js'
+import { SOUL_VERTEX } from './shaders.js'
 
 test('a seed always builds the same soul', () => {
   const a = buildSwarm({ core: 3, flame: 5 }, seededRandom(42))
@@ -199,6 +200,11 @@ test('picked while it turns, the next colour waits and hurries this one on; the 
   tint.tick(TINT.settle, u)
   assert.deepEqual([u.uMidWas.value.rgb, u.uMid.value.rgb], [SOUL_PALETTES.red.mid, SOUL_PALETTES.white.mid])
   assert.equal(u.uShift.value, 0)
+})
+
+test('the shader starts the change where TINT.from says: the bottom of the ember', () => {
+  const [x, y] = TINT.from.map((v) => v.toFixed(3))
+  assert.ok(SOUL_VERTEX.includes(`p - vec2(${x}, ${y})`), `expected the shader to measure from vec2(${x}, ${y})`)
 })
 
 test('the colour it already has changes nothing, and an unknown one is refused', () => {

@@ -8,7 +8,7 @@ inline constexpr int kCurrents = 5;
 inline constexpr int kTrailN = 8;
 inline constexpr float kAssemblyEnd = 8.6f;
 inline constexpr float kFrameBottom = -2.0f, kFrameTop = 9.0f, kFrameMinWidth = 5.6f;
-inline constexpr float kTintSettle = 4.3f, kTintHurry = 3.0f;
+inline constexpr float kTintSettle = 4.8f, kTintHurry = 3.0f;
 
 struct PaletteDef { const char *name; float hot[3], mid[3], cool[3]; };
 inline constexpr PaletteDef kPalettes[] = {
@@ -119,8 +119,15 @@ inline constexpr const char *kVertexShader =
   vec3 ramp(float h, vec3 hot, vec3 mid, vec3 cool) {
     return h < 0.5 ? mix(cool, mid, h * 2.0) : mix(mid, hot, h * 2.0 - 1.0);
   }
+  float tintDistance(vec2 p) {
+    vec2 d = p - vec2(0.000, -0.750);
+    return length(vec2(d.x * 1.15, d.y * (d.y > 0.0 ? 0.8 : 1.5)));
+  }
   float tintAt(vec2 p, float w) {
-    float delay = 0.300 * min(length(p - vec2(0.0, 0.6)), 9.000) + 0.600 * fract(w * 91.7);
+    float d = tintDistance(p);
+    float ragged = 0.500 * (0.5 + 0.5 * snoise(vec3(p * 0.7, uShift * 0.15 + 3.1))) * smoothstep(0.0, 2.5, d);
+    float apart = 0.600 * fract(w * 91.7) * smoothstep(0.0, 1.5, d);
+    float delay = 0.300 * min(d, 9.000) + ragged + apart;
     return smoothstep(0.0, 1.0, (uShift - delay) / 1.000);
   }
   vec3 heatColor(float h, float k) {
@@ -176,13 +183,13 @@ inline constexpr const char *kVertexShader =
     float reach = mix(1.4, 6.2, tongue * (0.55 + 0.45 * r.z)) * (1.0 + 0.5 * uFlare + 0.45 * uLevel);
     float y = born.y + reach * life;
     float bulge = 1.0 + 0.22 * exp(-pow((y - 1.4) / 0.9, 2.0));
-    float x = born.x * 1.06 * bulge * pow(1.0 - smoothstep(0.5, 5.8, y), 0.85) + (r.z - 0.5) * 0.06;
+)GLSL"
+    R"GLSL(    float x = born.x * 1.06 * bulge * pow(1.0 - smoothstep(0.5, 5.8, y), 0.85) + (r.z - 0.5) * 0.06;
     float amp = 0.10 + 0.55 * smoothstep(0.3, 4.3, y);
     vec3 q = vec3(x * 0.6, y * 0.5 - uTime * 0.95, uTime * 0.2);
     x += snoise(q) * amp + sway(y);
     y += snoise(q + 19.1) * amp * 0.3;
-)GLSL"
-    R"GLSL(    x += snoise(vec3(w * 37.0, y * 0.9 - uTime * 1.4, uTime * 0.35)) * (0.05 + 0.4 * amp);
+    x += snoise(vec3(w * 37.0, y * 0.9 - uTime * 1.4, uTime * 0.35)) * (0.05 + 0.4 * amp);
     float stray = step(0.9, fract(w * 23.7)) * smoothstep(0.25, 1.0, life);
     x += sign(born.x + 0.01) * stray * stray * (0.8 + 1.4 * fract(w * 51.3));
     y += stray * 0.8;

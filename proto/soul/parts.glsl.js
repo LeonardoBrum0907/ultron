@@ -13,10 +13,20 @@ export const PARTS = /* glsl */ `
   vec3 ramp(float h, vec3 hot, vec3 mid, vec3 cool) {
     return h < 0.5 ? mix(cool, mid, h * 2.0) : mix(mid, hot, h * 2.0 - 1.0);
   }
+  // How far the change has to go to reach here from where it is born, the bottom of the
+  // ember (tint.js): heat rises, so it runs up the fire faster than down or sideways.
+  float tintDistance(vec2 p) {
+    vec2 d = p - vec2(${f(TINT.from[0])}, ${f(TINT.from[1])});
+    return length(vec2(d.x * 1.15, d.y * (d.y > 0.0 ? 0.8 : 1.5)));
+  }
   // How far a particle here has turned to the new colour, 0..1 (tint.js): the farther from
-  // the heart, the later, and each at its own moment, so the change climbs the fire.
+  // where it is born, the later. Right there it starts together, a clean point; farther out
+  // the front grows ragged and each particle turns at its own moment.
   float tintAt(vec2 p, float w) {
-    float delay = ${f(TINT.pace)} * min(length(p - vec2(0.0, 0.6)), ${f(TINT.reach)}) + ${f(TINT.spread)} * fract(w * 91.7);
+    float d = tintDistance(p);
+    float ragged = ${f(TINT.rough)} * (0.5 + 0.5 * snoise(vec3(p * 0.7, uShift * 0.15 + 3.1))) * smoothstep(0.0, 2.5, d);
+    float apart = ${f(TINT.spread)} * fract(w * 91.7) * smoothstep(0.0, 1.5, d);
+    float delay = ${f(TINT.pace)} * min(d, ${f(TINT.reach)}) + ragged + apart;
     return smoothstep(0.0, 1.0, (uShift - delay) / ${f(TINT.turn)});
   }
   vec3 heatColor(float h, float k) {
