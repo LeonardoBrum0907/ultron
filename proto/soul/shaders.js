@@ -32,6 +32,7 @@ const UNIFORMS = /* glsl */ `
   uniform vec2  uView;    // clip units per world unit, x and y
   uniform float uYMid;    // world y at the middle of the screen
   uniform float uPx;      // device px per world unit
+  uniform float uDensity; // how much brighter each particle is, when there are fewer of them
   varying vec3  vColor;
   varying float vAlpha;
 `
@@ -65,7 +66,7 @@ export const SOUL_VERTEX = /* glsl */ `
     vColor = heatColor(min(1.0, mix(m.heat, s.heat, e) + 0.25 * turning), k);
     // A stream in flight glows brighter than the dust it left.
     vAlpha = mix(m.alpha * (1.0 + 1.2 * sin(PI * e)), s.alpha * (1.0 + 0.6 * uFlare + 0.5 * uLevel), e);
-    vAlpha *= 1.0 + 0.5 * turning;
+    vAlpha *= (1.0 + 0.5 * turning) * uDensity;
     gl_Position = vec4(p.x * uView.x, (p.y - uYMid) * uView.y, 0.0, 1.0);
     // It only swells to its size in the soul as it lands (the glow's sprites are big).
     gl_PointSize = max(1.0, mix(m.size, s.size, e * e * e) * uPx);

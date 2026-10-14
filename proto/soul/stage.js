@@ -50,17 +50,21 @@ export function makeSoulUniforms() {
     uView: { value: new THREE.Vector2(1, 1) },
     uYMid: { value: 0 },
     uPx: { value: 1 },
+    uDensity: { value: 1 },
   }
 }
 
 /**
  * The particles of a swarm (swarm.js) as one THREE.Points, drawn by the soul's shader.
+ * Its light adds up, over black, or over a see-through canvas (clear: 'none'), where it
+ * also adds up how opaque it is, so it glows over whatever page is behind it.
  * @param {import('./swarm.js').SoulSwarm} swarm
  * @param {Record<string, { value: unknown }>} uniforms from makeSoulUniforms
+ * @param {{ clear?: 'black' | 'none' }} [opts]
  * @returns {THREE.Points}
  * @example scene.add(makeSoulPoints(buildSwarm(SOUL_BUDGET, seededRandom(1)), uniforms))
  */
-export function makeSoulPoints(swarm, uniforms) {
+export function makeSoulPoints(swarm, uniforms, { clear = 'black' } = {}) {
   const geometry = new THREE.BufferGeometry()
   // three draws as many points as `position` has; the shader never reads it.
   geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(swarm.count * 3), 3))
@@ -74,11 +78,20 @@ export function makeSoulPoints(swarm, uniforms) {
     transparent: true,
     depthTest: false,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    ...(clear === 'none' ? GLOW_OVER_PAGE : { blending: THREE.AdditiveBlending }),
   })
   const points = new THREE.Points(geometry, material)
   points.frustumCulled = false
   return points
+}
+
+// Colour adds as light; opacity adds too, so the canvas holds premultiplied light.
+const GLOW_OVER_PAGE = {
+  blending: THREE.CustomBlending,
+  blendSrc: THREE.SrcAlphaFactor,
+  blendDst: THREE.OneFactor,
+  blendSrcAlpha: THREE.OneFactor,
+  blendDstAlpha: THREE.OneFactor,
 }
 
 /**
