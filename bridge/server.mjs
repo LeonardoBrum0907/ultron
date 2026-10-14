@@ -941,7 +941,7 @@ const conversations = new ConversationSlot({
   devices,
   policy,
   memory: { saved: savedConversation, remember: rememberConversation, forget: forgetConversation },
-  ownTools: (io) => ownTools({ ...io, allowWrites: ALLOW_WRITES }),
+  ownTools: (io) => ownTools({ ...io, allowWrites: ALLOW_WRITES, home: homedir() }),
 })
 const handleBrain = brainRoute({ brain, conversations, devices, file: brainFile, defaults: ENV_CHOICE })
 

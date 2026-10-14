@@ -624,7 +624,9 @@
         "ultron",
         "ultron_chrome",
         "ultron_eyes",
-        "ultron_ui"
+        "ultron_files",
+        "ultron_ui",
+        "ultron_web"
       ],
       "inProcess": {
         "ultron": [
@@ -653,6 +655,14 @@
         "ultron_eyes": [
           "look",
           "watch"
+        ],
+        "ultron_files": [
+          "files_read",
+          "files_list",
+          "files_search"
+        ],
+        "ultron_web": [
+          "web_fetch"
         ]
       },
       "agents": {
@@ -774,7 +784,9 @@
         "ultron",
         "ultron_chrome",
         "ultron_eyes",
-        "ultron_ui"
+        "ultron_files",
+        "ultron_ui",
+        "ultron_web"
       ],
       "inProcess": {
         "ultron": [
@@ -803,6 +815,14 @@
         "ultron_eyes": [
           "look",
           "watch"
+        ],
+        "ultron_files": [
+          "files_read",
+          "files_list",
+          "files_search"
+        ],
+        "ultron_web": [
+          "web_fetch"
         ]
       },
       "agents": {

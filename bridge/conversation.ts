@@ -37,7 +37,7 @@ export interface ConversationDeps {
   devices: Devices
   policy: ToolPolicy
   memory: ConversationMemory
-  ownTools: (io: Omit<OwnToolsIo, 'allowWrites'>) => Record<string, ToolServer>
+  ownTools: (io: Pick<OwnToolsIo, 'send' | 'ask'>) => Record<string, ToolServer>
 }
 
 /**
