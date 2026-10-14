@@ -1,7 +1,5 @@
 #include "soul_tint.h"
 
-#include "soul_generated.h"
-
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -46,6 +44,14 @@ const Palette &paletteOf(const std::string &name)
         throw std::invalid_argument("unknown soul palette \"" + name + "\", expected one of " + namesOf(palettes()));
     }
     return found->second;
+}
+
+Mix allOf(const std::string &palette)
+{
+    paletteOf(palette);
+    Mix mix{};
+    for (int i = 0; i < gen::kPaletteCount; ++i) mix[i] = palette == gen::kPalettes[i].name ? 1.0f : 0.0f;
+    return mix;
 }
 
 AvatarStates builtInStates()

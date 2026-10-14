@@ -3,6 +3,9 @@
 // it was, the one it becomes and uShift), and the fire's energy and pace ease to the state's.
 #pragma once
 
+#include "soul_generated.h"
+
+#include <array>
 #include <map>
 #include <string>
 
@@ -29,6 +32,12 @@ using AvatarStates = std::map<std::string, AvatarState>;
 // The palette by name; throws std::invalid_argument naming the palettes there are.
 const Palette &paletteOf(const std::string &name);
 
+// How much of each palette (in generated::kPalettes order) the fire is: uMix and uMixWas.
+using Mix = std::array<float, generated::kPaletteCount>;
+
+// All of the palette named, none of the others; throws as paletteOf does.
+Mix allOf(const std::string &palette);
+
 // calm, thinking, angry, happy, as on the web avatar.
 AvatarStates builtInStates();
 
@@ -40,8 +49,8 @@ public:
     explicit Tint(const std::string &start);
     void pick(const std::string &name); // a palette name; waits if a change is running
     void tick(float dt);
-    const Palette &was() const { return paletteOf(was_); }
-    const Palette &to() const { return paletteOf(to_); }
+    Mix was() const { return allOf(was_); }
+    Mix to() const { return allOf(to_); }
     float since() const { return since_; } // s since the change began: uShift
 
 private:

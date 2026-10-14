@@ -4,9 +4,11 @@
 
 import { FLIGHT } from './flight.glsl.js'
 import { SIMPLEX } from './noise.glsl.js'
+import { SOUL_PALETTE_NAMES } from './palettes.js'
 import { PARTS } from './parts.glsl.js'
 
 const UNIFORMS = /* glsl */ `
+  const int PALETTES = ${SOUL_PALETTE_NAMES.length};
   attribute vec4 aRand;   // four random numbers 0..1
   attribute vec4 aMeta;   // x which part (swarm.js PART), y one more random number, z its current, w its lane 0..1
   attribute vec4 aFly;    // x when it sets off (s after the summons), y how long it flies, zw where in the dust it rests (0..1)
@@ -22,12 +24,11 @@ const UNIFORMS = /* glsl */ `
   uniform vec4  uTrail[8];  // the cursor's recent path, newest first: xy where, zw its velocity faded by age (touch.js)
   uniform float uFlare;   // a click's flare: 1 just now, fading to 0
   uniform float uLevel;   // the microphone, 0..1
-  uniform vec3  uHot;     // the palette: white-hot core ..
-  uniform vec3  uMid;     // .. the flame's own colour ..
-  uniform vec3  uCool;    // .. and its cooling edges, the smoke and the dust
-  uniform vec3  uHotWas;  // the palette it is turning from (tint.js) ..
-  uniform vec3  uMidWas;
-  uniform vec3  uCoolWas;
+  uniform vec3  uPalHot[PALETTES];  // every palette (palettes.js): its white-hot core ..
+  uniform vec3  uPalMid[PALETTES];  // .. the flame's own colour ..
+  uniform vec3  uPalCool[PALETTES]; // .. and its cooling edges, the smoke and the dust
+  uniform float uMix[PALETTES];     // how much of each palette it is turning to (tint.js) ..
+  uniform float uMixWas[PALETTES];  // .. how much of each it is turning from ..
   uniform float uShift;   // .. and s since it began to turn
   uniform vec2  uView;    // clip units per world unit, x and y
   uniform float uYMid;    // world y at the middle of the screen

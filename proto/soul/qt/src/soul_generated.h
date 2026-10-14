@@ -9,6 +9,7 @@ inline constexpr int kTrailN = 8;
 inline constexpr float kAssemblyEnd = 8.6f;
 inline constexpr float kFrameBottom = -2.0f, kFrameTop = 9.0f, kFrameMinWidth = 5.6f;
 inline constexpr float kTintSettle = 4.8f, kTintHurry = 3.0f;
+inline constexpr int kPaletteCount = 4;
 
 struct PaletteDef { const char *name; float hot[3], mid[3], cool[3]; };
 inline constexpr PaletteDef kPalettes[] = {
@@ -40,6 +41,7 @@ inline constexpr float kDensityFull = 1.0f, kDensityLite = 2.8f;
 
 inline constexpr const char *kVertexShader =
     R"GLSL(#version 330 core
+  const int PALETTES = 4;
   in vec4 aRand;
   in vec4 aMeta;
   in vec4 aFly;
@@ -55,12 +57,11 @@ inline constexpr const char *kVertexShader =
   uniform vec4  uTrail[8];
   uniform float uFlare;
   uniform float uLevel;
-  uniform vec3  uHot;
-  uniform vec3  uMid;
-  uniform vec3  uCool;
-  uniform vec3  uHotWas;
-  uniform vec3  uMidWas;
-  uniform vec3  uCoolWas;
+  uniform vec3  uPalHot[PALETTES];
+  uniform vec3  uPalMid[PALETTES];
+  uniform vec3  uPalCool[PALETTES];
+  uniform float uMix[PALETTES];
+  uniform float uMixWas[PALETTES];
   uniform float uShift;
   uniform vec2  uView;
   uniform float uYMid;
@@ -130,8 +131,16 @@ inline constexpr const char *kVertexShader =
     float delay = 0.300 * min(d, 9.000) + ragged + apart;
     return smoothstep(0.0, 1.0, (uShift - delay) / 1.000);
   }
+  vec3 paletteAt(float h, int i) {
+    return ramp(h, uPalHot[i], uPalMid[i], uPalCool[i]);
+  }
+  vec3 mixColor(float h, float weights[PALETTES]) {
+    vec3 c = vec3(0.0);
+    for (int i = 0; i < PALETTES; i++) c += weights[i] * paletteAt(h, i);
+    return c;
+  }
   vec3 heatColor(float h, float k) {
-    return mix(ramp(h, uHotWas, uMidWas, uCoolWas), ramp(h, uHot, uMid, uCool), k);
+    return mix(mixColor(h, uMixWas), mixColor(h, uMix), k);
   }
   float sway(float y) {
     float lean = smoothstep(0.6, 4.5, y);
@@ -179,12 +188,12 @@ inline constexpr const char *kVertexShader =
   Spark flame(vec4 r, float w) {
     float life = lifeAt(mix(0.32, 0.62, r.x), 0.08);
     vec2 born = flameBirth(r);
-    float tongue = smoothstep(-0.6, 0.8, snoise(vec3(born.x * 2.4, uTime * 0.25, 3.7)));
+)GLSL"
+    R"GLSL(    float tongue = smoothstep(-0.6, 0.8, snoise(vec3(born.x * 2.4, uTime * 0.25, 3.7)));
     float reach = mix(1.4, 6.2, tongue * (0.55 + 0.45 * r.z)) * (1.0 + 0.5 * uFlare + 0.45 * uLevel);
     float y = born.y + reach * life;
     float bulge = 1.0 + 0.22 * exp(-pow((y - 1.4) / 0.9, 2.0));
-)GLSL"
-    R"GLSL(    float x = born.x * 1.06 * bulge * pow(1.0 - smoothstep(0.5, 5.8, y), 0.85) + (r.z - 0.5) * 0.06;
+    float x = born.x * 1.06 * bulge * pow(1.0 - smoothstep(0.5, 5.8, y), 0.85) + (r.z - 0.5) * 0.06;
     float amp = 0.10 + 0.55 * smoothstep(0.3, 4.3, y);
     vec3 q = vec3(x * 0.6, y * 0.5 - uTime * 0.95, uTime * 0.2);
     x += snoise(q) * amp + sway(y);

@@ -12,6 +12,9 @@ export const SOUL_PALETTES = {
   white: { hot: [1.0, 1.0, 1.0], mid: [0.72, 0.9, 1.0], cool: [0.35, 0.55, 0.85] },
 }
 
+/** The palettes in order: the shader's table of them (stage.js) and every mix (tint.js) keep it. */
+export const SOUL_PALETTE_NAMES = Object.keys(SOUL_PALETTES)
+
 /**
  * The palette after this one, round the list.
  * @param {string} name a key of SOUL_PALETTES
@@ -19,6 +22,6 @@ export const SOUL_PALETTES = {
  * @example nextPalette('blue') // 'red'
  */
 export function nextPalette(name) {
-  const names = Object.keys(SOUL_PALETTES)
+  const names = SOUL_PALETTE_NAMES
   return names[(names.indexOf(name) + 1) % names.length]
 }

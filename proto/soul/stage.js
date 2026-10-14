@@ -2,6 +2,7 @@
 // uniforms its shader reads, its particles as one THREE.Points, and how it fits a box.
 
 import * as THREE from 'three'
+import { SOUL_PALETTE_NAMES, SOUL_PALETTES } from './palettes.js'
 import { SOUL_FRAGMENT, SOUL_VERTEX } from './shaders.js'
 import { CURRENTS } from './swarm.js'
 import { TRAIL_N } from './touch.js'
@@ -40,18 +41,22 @@ export function makeSoulUniforms() {
     uTrail: { value: Array.from({ length: TRAIL_N }, () => new THREE.Vector4(0, -100, 0, 0)) },
     uFlare: { value: 0 },
     uLevel: { value: 0 },
-    uHot: { value: new THREE.Color() },
-    uMid: { value: new THREE.Color() },
-    uCool: { value: new THREE.Color() },
-    uHotWas: { value: new THREE.Color() },
-    uMidWas: { value: new THREE.Color() },
-    uCoolWas: { value: new THREE.Color() },
+    uPalHot: { value: paletteTable('hot') },
+    uPalMid: { value: paletteTable('mid') },
+    uPalCool: { value: paletteTable('cool') },
+    uMix: { value: new Array(SOUL_PALETTE_NAMES.length).fill(0) },
+    uMixWas: { value: new Array(SOUL_PALETTE_NAMES.length).fill(0) },
     uShift: { value: 0 },
     uView: { value: new THREE.Vector2(1, 1) },
     uYMid: { value: 0 },
     uPx: { value: 1 },
     uDensity: { value: 1 },
   }
+}
+
+// One shade of every palette, in SOUL_PALETTE_NAMES order: the shader's table of them.
+function paletteTable(shade) {
+  return SOUL_PALETTE_NAMES.map((name) => new THREE.Color(...SOUL_PALETTES[name][shade]))
 }
 
 /**

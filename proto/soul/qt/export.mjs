@@ -7,7 +7,7 @@ import { writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { AVATAR_FRAME, AVATAR_QUALITY } from '../avatar.js'
 import { AVATAR_STATES } from '../avatar-states.js'
-import { SOUL_PALETTES } from '../palettes.js'
+import { SOUL_PALETTE_NAMES, SOUL_PALETTES } from '../palettes.js'
 import { SOUL_FRAGMENT, SOUL_VERTEX } from '../shaders.js'
 import { ASSEMBLY_END, CURRENTS, FLIGHT, PART } from '../swarm.js'
 import { TINT } from '../tint.js'
@@ -79,6 +79,7 @@ function constants() {
     `inline constexpr float kAssemblyEnd = ${f(ASSEMBLY_END)};`,
     `inline constexpr float kFrameBottom = ${f(AVATAR_FRAME.bottom)}, kFrameTop = ${f(AVATAR_FRAME.top)}, kFrameMinWidth = ${f(AVATAR_FRAME.minWidth)};`,
     `inline constexpr float kTintSettle = ${f(TINT.settle)}, kTintHurry = ${f(TINT.hurry)};`,
+    `inline constexpr int kPaletteCount = ${SOUL_PALETTE_NAMES.length};`,
   ]
 }
 

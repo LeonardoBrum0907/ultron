@@ -29,8 +29,18 @@ export const PARTS = /* glsl */ `
     float delay = ${f(TINT.pace)} * min(d, ${f(TINT.reach)}) + ragged + apart;
     return smoothstep(0.0, 1.0, (uShift - delay) / ${f(TINT.turn)});
   }
+  // Palette i of the table at heat h (0 the smoke .. 1 white-hot).
+  vec3 paletteAt(float h, int i) {
+    return ramp(h, uPalHot[i], uPalMid[i], uPalCool[i]);
+  }
+  // A mix of the palettes (uMix or uMixWas) at heat h.
+  vec3 mixColor(float h, float weights[PALETTES]) {
+    vec3 c = vec3(0.0);
+    for (int i = 0; i < PALETTES; i++) c += weights[i] * paletteAt(h, i);
+    return c;
+  }
   vec3 heatColor(float h, float k) {
-    return mix(ramp(h, uHotWas, uMidWas, uCoolWas), ramp(h, uHot, uMid, uCool), k);
+    return mix(mixColor(h, uMixWas), mixColor(h, uMix), k);
   }
   // The whole flame sways, more the higher it is; the smoke rides on the same sway.
   float sway(float y) {

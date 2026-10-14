@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { nextPalette, SOUL_PALETTES } from './palettes.js'
+import { nextPalette, SOUL_PALETTE_NAMES, SOUL_PALETTES } from './palettes.js'
 import { createAssembly } from './assembly.js'
 import { DESTINATIONS, rollCurrents } from './currents.js'
 import { ASSEMBLY_END, buildSwarm, CURRENTS, PART, routeOf, seededRandom, SOUL_BUDGET } from './swarm.js'
@@ -169,18 +169,20 @@ test('the cursor leaves a trail in world units, newest first, with the way it we
 
 class FakeTintUniforms {
   constructor() {
-    const rgb = () => ({ setRGB(r, g, b) { this.rgb = [r, g, b] } })
-    for (const name of ['uHot', 'uMid', 'uCool', 'uHotWas', 'uMidWas', 'uCoolWas']) this[name] = { value: rgb() }
-    this.uShift = { value: 0 }
+    const weights = () => new Array(SOUL_PALETTE_NAMES.length).fill(0)
+    Object.assign(this, { uMix: { value: weights() }, uMixWas: { value: weights() }, uShift: { value: 0 } })
   }
 }
+
+/** All of one palette, as the shader gets it (uMix). */
+const allOf = (name) => SOUL_PALETTE_NAMES.map((each) => (each === name ? 1 : 0))
 
 test('a new colour turns from the old one, and has turned everywhere by TINT.settle', () => {
   const tint = createTint('blue')
   const u = new FakeTintUniforms()
   tint.pick('red')
   tint.tick(0.1, u)
-  assert.deepEqual([u.uMidWas.value.rgb, u.uMid.value.rgb], [SOUL_PALETTES.blue.mid, SOUL_PALETTES.red.mid])
+  assert.deepEqual([u.uMixWas.value, u.uMix.value], [allOf('blue'), allOf('red')])
   assert.ok(Math.abs(u.uShift.value - 0.1) < 1e-9)
   tint.tick(TINT.settle, u)
   assert.equal(u.uShift.value, TINT.settle)
@@ -196,9 +198,9 @@ test('picked while it turns, the next colour waits and hurries this one on; the 
   assert.equal(tint.target(), 'white')
   tint.tick(0.1, u)
   assert.ok(Math.abs(u.uShift.value - (1 + 0.1 * TINT.hurry)) < 1e-9)
-  assert.deepEqual(u.uMid.value.rgb, SOUL_PALETTES.red.mid)
+  assert.deepEqual(u.uMix.value, allOf('red'))
   tint.tick(TINT.settle, u)
-  assert.deepEqual([u.uMidWas.value.rgb, u.uMid.value.rgb], [SOUL_PALETTES.red.mid, SOUL_PALETTES.white.mid])
+  assert.deepEqual([u.uMixWas.value, u.uMix.value], [allOf('red'), allOf('white')])
   assert.equal(u.uShift.value, 0)
 })
 

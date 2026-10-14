@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createSoulForm, FADE, motionOf, SUMMON_AFTER } from './form.js'
 import { SOUL_MOODS, soulLookOf } from './moods.js'
-import { SOUL_PALETTES } from './palettes.js'
+import { SOUL_PALETTE_NAMES, SOUL_PALETTES } from './palettes.js'
 import { ASSEMBLY_END } from './swarm.js'
 
 /** The mind's output as the figure reads it each frame (mind.output()), set by hand. */
@@ -17,6 +17,8 @@ class FakeMindOutput {
 }
 
 const calm = new FakeMindOutput()
+/** All of one palette, as the shader gets it (uMix). */
+const allOf = (name) => SOUL_PALETTE_NAMES.map((each) => (each === name ? 1 : 0))
 const run = (soul, seconds, mind = calm, dt = 0.05) => {
   let frame = null
   for (let t = 0; t < seconds - 1e-9; t += dt) frame = soul.tick(dt, mind)
@@ -85,9 +87,9 @@ test('fresh from the dust it takes his mood as it is, then turns as the mood cha
   const irritated = new FakeMindOutput({ dominant: 'irritation', mood: { irritation: 0.8 } })
   soul.show()
   run(soul, 0.1, irritated)
-  assert.deepEqual([u.uMidWas.value.toArray(), u.uMid.value.toArray()], [SOUL_PALETTES.red.mid, SOUL_PALETTES.red.mid])
+  assert.deepEqual([u.uMixWas.value, u.uMix.value], [allOf('red'), allOf('red')])
   run(soul, 0.1, calm)
-  assert.deepEqual([u.uMidWas.value.toArray(), u.uMid.value.toArray()], [SOUL_PALETTES.red.mid, SOUL_PALETTES.blue.mid])
+  assert.deepEqual([u.uMixWas.value, u.uMix.value], [allOf('red'), allOf('blue')])
 })
 
 test('a dream or a call makes it flare, and a sigh dims it', () => {

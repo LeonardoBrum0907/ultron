@@ -31,7 +31,21 @@ QString knownState(const QString &name, const soul::AvatarStates &states)
     return QStringLiteral("calm");
 }
 
-QVector3D vec(const soul::Rgb &c) { return {c.r, c.g, c.b}; }
+QVector3D vec(const float (&rgb)[3]) { return {rgb[0], rgb[1], rgb[2]}; }
+
+// The table of palettes the shader mixes from (uPalHot, uPalMid, uPalCool).
+void setPaletteTable(QOpenGLShaderProgram &p)
+{
+    QVector3D hot[gen::kPaletteCount], mid[gen::kPaletteCount], cool[gen::kPaletteCount];
+    for (int i = 0; i < gen::kPaletteCount; ++i) {
+        hot[i] = vec(gen::kPalettes[i].hot);
+        mid[i] = vec(gen::kPalettes[i].mid);
+        cool[i] = vec(gen::kPalettes[i].cool);
+    }
+    p.setUniformValueArray("uPalHot", hot, gen::kPaletteCount);
+    p.setUniformValueArray("uPalMid", mid, gen::kPaletteCount);
+    p.setUniformValueArray("uPalCool", cool, gen::kPaletteCount);
+}
 
 } // namespace
 
@@ -189,12 +203,10 @@ void SoulAvatarWidget::setUniforms()
     p.setUniformValue("uLive", 0.0f);
     p.setUniformValue("uFlare", flare_);
     p.setUniformValue("uLevel", level_);
-    p.setUniformValue("uHot", vec(tint_.to().hot));
-    p.setUniformValue("uMid", vec(tint_.to().mid));
-    p.setUniformValue("uCool", vec(tint_.to().cool));
-    p.setUniformValue("uHotWas", vec(tint_.was().hot));
-    p.setUniformValue("uMidWas", vec(tint_.was().mid));
-    p.setUniformValue("uCoolWas", vec(tint_.was().cool));
+    setPaletteTable(p);
+    const soul::Mix was = tint_.was(), to = tint_.to();
+    p.setUniformValueArray("uMixWas", was.data(), gen::kPaletteCount, 1);
+    p.setUniformValueArray("uMix", to.data(), gen::kPaletteCount, 1);
     p.setUniformValue("uShift", tint_.since());
     p.setUniformValue("uView", 2 * view_.pxPerUnit / view_.width, 2 * view_.pxPerUnit / view_.height);
     p.setUniformValue("uYMid", view_.yMid);

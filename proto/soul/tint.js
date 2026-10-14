@@ -3,9 +3,10 @@
 // Léo marked it), and spreads from there: up the heart and the flames faster than down or
 // sideways, along a ragged front, to the smoke and then out through the dust, each particle
 // turning on its own; a brighter band runs along where it is turning (shaders.js). The CPU keeps the palette it
-// was and the one it is becoming, and how long ago it began (uShift).
+// was and the one it is becoming, as how much of each palette they are (uMixWas, uMix), and
+// how long ago it began (uShift).
 
-import { SOUL_PALETTES } from './palettes.js'
+import { SOUL_PALETTE_NAMES, SOUL_PALETTES } from './palettes.js'
 
 /** How the change spreads (the shader is built from these, so they agree). */
 export const TINT = {
@@ -57,14 +58,14 @@ function begin(s) {
 }
 
 function setColours(uniforms, s) {
-  const [was, to] = [paletteOf(s.was), paletteOf(s.to)]
-  uniforms.uHotWas.value.setRGB(...was.hot)
-  uniforms.uMidWas.value.setRGB(...was.mid)
-  uniforms.uCoolWas.value.setRGB(...was.cool)
-  uniforms.uHot.value.setRGB(...to.hot)
-  uniforms.uMid.value.setRGB(...to.mid)
-  uniforms.uCool.value.setRGB(...to.cool)
+  setWeights(uniforms.uMixWas.value, s.was)
+  setWeights(uniforms.uMix.value, s.to)
   uniforms.uShift.value = s.since
+}
+
+// All of the palette named, none of the others.
+function setWeights(into, name) {
+  SOUL_PALETTE_NAMES.forEach((each, i) => (into[i] = each === name ? 1 : 0))
 }
 
 function paletteOf(name) {
