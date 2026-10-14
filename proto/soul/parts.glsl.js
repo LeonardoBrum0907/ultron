@@ -25,19 +25,34 @@ export const PARTS = /* glsl */ `
     return since < 0.0 ? start : fract(since * rate + start);
   }
 
-  // The orb: a ball that turns (the inside faster than the skin, so its wisps swirl) and
-  // boils; a few motes of its skin are thrown off it now and then and fall back.
+  // The heart of the fire, in layers like a drawn flame (Léo's references): the outer
+  // flame, a lighter layer inside it and the ember at the middle, white-hot. Each layer is
+  // a teardrop whose sides boil (lobes run up them); its particles rise through it, faster
+  // near the top, and crowd its edge, so each layer reads as its own outline. The whole
+  // heart breathes, the ember a beat ahead of the layers round it.
+  vec3 layerShape(float layer) { // bottom y, top y, half width (world units)
+    if (layer < 0.5) return vec3(-0.78, 0.95, 0.58);
+    if (layer < 1.5) return vec3(-0.95, 1.75, 0.88);
+    return vec3(-1.08, 2.6, 1.18);
+  }
   Spark core(vec4 r, float w) {
-    float z = r.x * 2.0 - 1.0;
-    float a = r.y * 2.0 * PI + uTime * (0.35 + 0.6 * (1.0 - r.z)) + w * 0.3;
-    vec3 dir = vec3(sqrt(1.0 - z * z) * cos(a), z, sqrt(1.0 - z * z) * sin(a));
-    float rad = pow(r.z, 0.5);
-    float boil = snoise(dir * 2.3 + vec3(0.0, -uTime * 0.7, uTime * 0.3));
-    float thrown = step(0.93, r.w) * max(0.0, snoise(dir * 1.5 + vec3(w * 9.0, uTime * 0.5, 0.0)));
-    rad *= 1.0 + 0.07 * boil * rad + 0.05 * uLevel + 0.6 * thrown * rad;
-    float wisp = 0.5 + 0.5 * snoise(dir * 3.5 + uTime * 0.4);
-    return Spark(dir.xy * rad, 0.07 + 0.04 * r.w, 0.06 + 0.1 * wisp,
-      clamp(1.15 - rad * 0.7 + 0.2 * wisp, 0.0, 1.0));
+    float layer = r.z < 0.24 ? 0.0 : (r.z < 0.56 ? 1.0 : 2.0); // 0 the ember, 1 the middle, 2 the outer flame
+    vec3 shape = layerShape(layer);
+    float breath = 1.0 + 0.045 * sin(uTime * 1.6 - layer * 0.7) + 0.06 * uLevel + 0.1 * uFlare;
+    float rise = fract(r.x + uFire * mix(0.16, 0.3, w) * (1.0 + 0.25 * layer));
+    float v = 1.0 - sqrt(1.0 - rise); // most of it low down, in the belly
+    float side = r.y < 0.5 ? -1.0 : 1.0;
+    float lobes = snoise(vec3(v * 3.2 - uTime * 1.5, side * 2.0 + layer * 5.0, uTime * 0.3));
+    float width = shape.z * sin(PI * pow(v, 0.6)) * (1.0 - 0.3 * v) * (1.0 + 0.22 * lobes) * breath;
+    float y = mix(shape.x, shape.y, v) * breath;
+    float across = fract(r.y * 2.0); // 0 its middle .. 1 its edge
+    float x = side * (r.w < 0.4 ? pow(across, 0.25) : across) * width; // some crowd the edge: the outline
+    x += 0.18 * v * snoise(vec3(v * 2.0 - uTime * 1.2, layer * 7.0, 1.0)) + sway(y) + uWind.x * windAt(y);
+    float ends = smoothstep(0.0, 0.06, rise) * (1.0 - smoothstep(0.88, 1.0, v)); // it fades at its tip, not halfway up
+    float glow = 1.0 + 5.0 * (breath - 1.0) * (1.0 - 0.5 * layer); // brighter as it breathes in, the ember most
+    float alpha = (layer < 0.5 ? 0.3 : (layer < 1.5 ? 0.24 : 0.12)) * ends * glow;
+    float heat = layer < 0.5 ? 1.0 : (layer < 1.5 ? 0.8 - 0.15 * v : 0.58 - 0.2 * v);
+    return Spark(vec2(x, y), 0.05 + 0.03 * r.w, alpha, heat);
   }
 
   // The glow round the orb: a few big faint sprites, so there is bloom with no extra pass.

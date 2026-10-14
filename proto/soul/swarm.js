@@ -80,7 +80,7 @@ function fillParticle(swarm, i, part, rand) {
 /**
  * Which current carries a particle and its lane across the stream (0..1, left to right
  * where it lands), so a stream does not tangle. The five currents carry about as many
- * each: the orb and its glow; the flames in three, left, middle and right (by where on
+ * each: the heart of the fire and its glow; the flames in three, left, middle and right (by where on
  * the orb they are born, r[1]); the smoke and the embers.
  * @param {string} part a key of PART
  * @param {number[]} r the particle's four random numbers
@@ -88,7 +88,8 @@ function fillParticle(swarm, i, part, rand) {
  * @returns {[number, number]} current, lane
  */
 export function routeOf(part, r, rand) {
-  if (part === 'core' || part === 'halo') return [0, r[0]]
+  if (part === 'core') return [0, r[1]] // across its layer, left to right
+  if (part === 'halo') return [0, r[0]]
   if (part === 'flame') return [1 + Math.min(2, Math.floor(r[1] * 3)), (r[1] * 3) % 1]
   if (part === 'smoke' || part === 'ember') return [4, r[1]]
   return [Math.floor(rand() * CURRENTS), rand()] // the dust: anywhere in the cloud
