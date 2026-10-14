@@ -15,7 +15,10 @@ test('read-only built-ins run, write built-ins wait for ULTRON_ALLOW_WRITES', ()
 })
 
 test("Ultron's own servers always run", () => {
-  for (const name of ['mcp__ultron__display', 'mcp__ultron_ui__ui_theme', 'mcp__ultron_chrome__chrome_click', 'mcp__ultron_eyes__look']) {
+  for (const name of [
+    'mcp__ultron__display', 'mcp__ultron_ui__ui_theme', 'mcp__ultron_chrome__chrome_click', 'mcp__ultron_eyes__look',
+    'mcp__ultron_files__files_read', 'mcp__ultron_web__web_fetch', 'mcp__ultron_memory__memory_save',
+  ]) {
     assert.equal(readOnly.permits(name), true, name)
   }
 })

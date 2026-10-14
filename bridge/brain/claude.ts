@@ -296,6 +296,22 @@ function heavyAgent(heavy: ModelChoice | null, prompts: PersonaPrompts): Options
   }
 }
 
+/**
+ * Claude Code's built-ins that Ultron's own tools stand in for, by the server
+ * that replaces them. Switched off only when that server is present, so the
+ * model never holds two tools for one job and every brain reads the same way.
+ * Bash, Write, Edit and WebSearch stay Claude's until they have stand-ins.
+ */
+const REPLACED_BUILTINS: Record<string, string[]> = {
+  ultron_files: ['Read', 'Glob', 'Grep'],
+  ultron_web: ['WebFetch'],
+}
+
+/** @example replacedBuiltins({ ultron_web: webServer() })  // ['WebFetch'] */
+export function replacedBuiltins(tools: Record<string, ToolServer>): string[] {
+  return Object.keys(tools).flatMap((key) => REPLACED_BUILTINS[key] ?? [])
+}
+
 function sdkServers(external: ExternalServers, tools: Record<string, ToolServer>): ExternalServers {
   const own = Object.fromEntries(Object.entries(tools).map(([key, server]) => [key, toSdkServer(server)]))
   return { ...external, ...own }
@@ -313,6 +329,7 @@ function sessionOptions({ choice, prompts, external, resume, tools, policy }: Se
     // Everything Claude Code has configured, plus Ultron's own tools as
     // in-process servers.
     mcpServers: sdkServers(external, tools),
+    disallowedTools: replacedBuiltins(tools),
     // A plain system prompt, not the claude_code preset. The preset is
     // tuned for a coding agent — verbose, file-oriented, and a large chunk
     // of input tokens on every turn. Replacing it makes the persona stick,

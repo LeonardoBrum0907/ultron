@@ -32,6 +32,7 @@ import { brainRoute } from './brain-route.ts'
 import { ConversationSlot } from './conversation.ts'
 import { Devices } from './devices.ts'
 import { ownTools } from './tools/own.ts'
+import { aiMemory, memoryBanner } from './long-memory/ai-memory.ts'
 
 // The same .env.local the Vite app reads, so the ElevenLabs key and the
 // ULTRON_* settings can live in one file instead of the shell. Variables
@@ -936,14 +937,20 @@ const brain = claudeAgentBrain({
   persona: (heavy) => personaPrompts({ lang: LANG, heavy }),
   debug: config.debug,
 })
+// Long-term memory, when an ai-memory server is configured (bridge/config.ts).
+const longMemory = config.memory ? aiMemory(config.memory) : null
 const conversations = new ConversationSlot({
   brain,
   devices,
   policy,
   memory: { saved: savedConversation, remember: rememberConversation, forget: forgetConversation },
-  ownTools: (io) => ownTools({ ...io, allowWrites: ALLOW_WRITES }),
+  ownTools: (io) => ownTools({ ...io, allowWrites: ALLOW_WRITES, home: homedir(), memory: longMemory }),
 })
 const handleBrain = brainRoute({ brain, conversations, devices, file: brainFile, defaults: ENV_CHOICE })
+
+// Checked at startup for the same reason as the browser: a memory server that
+// is not running looks, from inside a turn, exactly like one with nothing in it.
+void memoryBanner(longMemory, config.memory).then((line) => console.log(line))
 
 wss.on('connection', (socket) => {
   console.log(`[ultron] client connected (${devices.size + 1} now)`)

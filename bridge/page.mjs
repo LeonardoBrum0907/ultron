@@ -86,7 +86,7 @@ const KILL = [
   'iframe', 'object', 'embed', 'applet', 'link', 'meta',
 ]
 
-function stripDangerous(html) {
+export function stripDangerous(html) {
   let out = html.replace(/<!--[\s\S]*?-->/g, '')
   for (const tag of KILL) {
     out = out.replace(new RegExp(`<${tag}\\b[\\s\\S]*?</${tag}\\s*>`, 'gi'), '')
@@ -134,7 +134,7 @@ function metaContent(html, names) {
   return ''
 }
 
-function titleOf(html) {
+export function titleOf(html) {
   return (
     metaContent(html, ['og:title', 'twitter:title']) ||
     textOf(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? '') ||
@@ -182,7 +182,7 @@ function proseLength(html) {
  * the moment this file starts naming publishers it becomes a thing that has to
  * be maintained against the web, and it will lose.
  */
-function articleBody(html) {
+export function articleBody(html) {
   const clean = stripFurniture(html)
 
   const candidates = []
@@ -229,7 +229,7 @@ function articleBody(html) {
  * of link text and not one paragraph, and the blade opens on a title and
  * nothing else. Same rules, one implementation, no disagreement possible.
  */
-function readableText(body) {
+export function readableText(body) {
   const parts = []
   let seenProse = false
   const pattern = /<(h1|h2|h3|p|li|blockquote)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi

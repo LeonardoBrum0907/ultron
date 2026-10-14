@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-import { sdkEvents } from '../brain/claude.ts'
+import { replacedBuiltins, sdkEvents } from '../brain/claude.ts'
+import { toolServer } from '../tools/tool.ts'
 
 /** Builds an SDK message from the fields that matter; the rest of the shape is not read. */
 const sdk = (msg: Record<string, unknown>) => msg as unknown as SDKMessage
@@ -84,4 +85,12 @@ test('init starts the session with the servers that can be used', () => {
     mcp_servers: [{ name: 'a', status: 'connected' }, { name: 'b', status: 'pending' }, { name: 'c', status: 'needs-auth' }, { name: 'd', status: 'failed' }],
   })
   assert.deepEqual(sdkEvents(init, new Set()), [{ type: 'started', sessionId: 's1', servers: ['a', 'b'] }])
+})
+
+test("Claude's built-ins go only where Ultron's own tools stand in for them", () => {
+  const server = (name: string) => toolServer({ name, version: '1', instructions: '', alwaysLoad: true, tools: [] })
+  assert.deepEqual(replacedBuiltins({ ultron_ui: server('ultron_ui') }), [])
+  assert.deepEqual(replacedBuiltins({ ultron_files: server('ultron_files'), ultron_web: server('ultron_web') }), [
+    'Read', 'Glob', 'Grep', 'WebFetch',
+  ])
 })

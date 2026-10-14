@@ -5,6 +5,7 @@
  * loaded by the entry point after every import has already been evaluated:
  * a module that read process.env at the top would miss it.
  */
+import type { AiMemorySettings } from './long-memory/ai-memory.ts'
 
 /** How hard a model thinks before it answers. */
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
@@ -46,6 +47,8 @@ export interface BridgeConfig {
   /** Writes, shell and acting on the world (bridge/policy.ts). */
   allowWrites: boolean
   brain: BrainSettings
+  /** Long-term memory in ai-memory, or null when ULTRON_MEMORY_URL is not set. */
+  memory: AiMemorySettings | null
   /** ULTRON_DEBUG=1 logs every message the brain emits. */
   debug: boolean
 }
@@ -97,6 +100,26 @@ function oneOf<T extends string>(name: string, value: string, allowed: readonly 
 }
 
 /**
+ * Where ai-memory listens, if it is used at all.
+ *
+ * Off unless ULTRON_MEMORY_URL is set, because it is a separate server the
+ * user has to run: a bridge pointed at one that is not there would fail every
+ * memory call. The URL may be given with or without its /mcp path. The token is
+ * the server's bearer token (ai-memory requires one by default).
+ */
+function readMemory(env: Env): AiMemorySettings | null {
+  const base = env.ULTRON_MEMORY_URL?.trim().replace(/\/+$/, '')
+  if (!base) return null
+  return {
+    url: base.endsWith('/mcp') ? base : `${base}/mcp`,
+    token: env.ULTRON_MEMORY_TOKEN || null,
+    timeoutMs: 8_000,
+    workspace: env.ULTRON_MEMORY_WORKSPACE || 'ultron',
+    project: env.ULTRON_MEMORY_PROJECT || 'memoria',
+  }
+}
+
+/**
  * Reads every setting the bridge's core needs.
  *
  * @example
@@ -110,6 +133,7 @@ export function readBridgeConfig(env: Env): BridgeConfig {
     lang: env.ULTRON_LANG ?? 'pt-BR',
     allowWrites: env.ULTRON_ALLOW_WRITES === '1',
     brain: readBrain(env),
+    memory: readMemory(env),
     debug: env.ULTRON_DEBUG === '1',
   }
 }

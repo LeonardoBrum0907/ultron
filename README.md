@@ -239,6 +239,9 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 | `ULTRON_SHELL` | Git Bash on Windows, else `bash` | The shell `!` commands run in |
 | `ULTRON_PASSWORD` | — | Turns on access from other devices through `/bridge`; they log in with it ([docs/remote.md](docs/remote.md)) |
 | `ULTRON_HOME` | `~/.ultron` | Where the bridge keeps which conversation to resume, and the models chosen in the L panel |
+| `ULTRON_MEMORY_URL` | — | An ai-memory server for long-term memory ([docs/memoria.md](docs/memoria.md)); off when unset |
+| `ULTRON_MEMORY_TOKEN` | — | That server's bearer token |
+| `ULTRON_MEMORY_WORKSPACE` / `ULTRON_MEMORY_PROJECT` | `ultron` / `memoria` | Where the notes live inside ai-memory |
 | `ULTRON_ALLOWED_ORIGINS` | local dev | Extra WebSocket origins to accept |
 | `ULTRON_ALLOW_NO_ORIGIN` | off | Accept connections with no `Origin` header |
 | `ULTRON_FILE_ROOTS` | — | Roots the `/file` endpoint may serve from |

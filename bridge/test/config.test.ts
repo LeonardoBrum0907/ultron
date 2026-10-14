@@ -15,8 +15,22 @@ test('defaults: Sonnet voice at low effort, Opus heavy at high, read-only', () =
       voice: { model: 'claude-sonnet-5-5', effort: 'low' },
       heavy: { model: 'claude-opus-5-5', effort: 'high' },
     },
+    memory: null,
     debug: false,
   })
+})
+
+test('long-term memory is on once ULTRON_MEMORY_URL names a server, with or without /mcp', () => {
+  const memory = readBridgeConfig({ ULTRON_MEMORY_URL: 'http://127.0.0.1:49374/', ULTRON_MEMORY_TOKEN: 'abc' }).memory
+  assert.deepEqual(memory, {
+    url: 'http://127.0.0.1:49374/mcp',
+    token: 'abc',
+    timeoutMs: 8000,
+    workspace: 'ultron',
+    project: 'memoria',
+  })
+  assert.equal(readBridgeConfig({ ULTRON_MEMORY_URL: 'http://h:1/mcp' }).memory?.url, 'http://h:1/mcp')
+  assert.equal(readBridgeConfig({ ULTRON_MEMORY_URL: 'http://h:1', ULTRON_MEMORY_PROJECT: 'leo' }).memory?.project, 'leo')
 })
 
 test('every setting can be overridden', () => {

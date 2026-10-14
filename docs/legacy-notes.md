@@ -5,7 +5,12 @@ Refactors in progress and known traps. Add a line when you find one; remove it w
 ## Traps
 
 - `bridge/policy.ts` (`toolPolicy`): the read-only rule matches a verb at the start of
-  the tool name, so MCP tools like `memory_query` are blocked without `ULTRON_ALLOW_WRITES`.
+  the tool name, so an external MCP tool like ai-memory's own `memory_query` is blocked
+  without `ULTRON_ALLOW_WRITES`. Ultron reaches ai-memory through its own
+  `ultron_memory` tools instead (`bridge/tools/memory.ts`), which the policy names.
+- `web_fetch` (`bridge/tools/web.ts`) goes through `net.mjs`, which ignores
+  `HTTPS_PROXY`: on a machine that only reaches the web through a proxy (a cloud
+  sandbox) it answers "upstream unreachable", as the page proxy does.
 - The bridge only accepts WebSocket origins on localhost:5173-5199 and 4173-4199
   (see `.claude/launch.json`).
 
@@ -30,8 +35,11 @@ Refactors in progress and known traps. Add a line when you find one; remove it w
 - LLM-agnostic brain (PR #8). Done: the conversation (`bridge/conversation.ts`)
   talks only to the `Brain` port (`bridge/brain/brain.ts`); Claude sits behind it
   in `bridge/brain/claude.ts`; Ultron's tools are neutral `ToolServer`s
-  (`bridge/tools/`). Still in `bridge/server.mjs`: the HTTP routes (speech,
-  media proxies, files, memory) and the wiring; they move out as the bridge
+  (`bridge/tools/`). Claude Code's Read, Glob, Grep and WebFetch now have
+  neutral stand-ins (`ultron_files`, `ultron_web`) and are switched off in the
+  Claude adapter (`REPLACED_BUILTINS` in `bridge/brain/claude.ts`); Bash, Write,
+  Edit and WebSearch are still Claude's own. Still in `bridge/server.mjs`: the
+  HTTP routes (speech, media proxies, files, memory) and the wiring; they move out as the bridge
   goes to TypeScript. Design in the project's `ultron-brain/arquitetura.md`.
 - Bridge to TypeScript, a module at a time. `.mjs` files still left are
   imported by `.ts` ones unchecked (`allowJs` in `tsconfig.bridge.json`).

@@ -124,8 +124,17 @@ const VETO_EXEMPT = new Set([
  * - `ultron_eyes` (the camera): looking changes nothing, and the real gate is
  *   the browser's own camera permission plus an indicator the user can see for
  *   as long as it is live.
+ * - `ultron_files` and `ultron_web`: reading files and fetching pages, the
+ *   stand-ins for Read, Glob, Grep and WebFetch, which run freely above.
+ *   `files_read` and `web_fetch` begin with no read verb.
+ * - `ultron_memory` (long-term memory): its notes live in ai-memory, versioned
+ *   in git, and the model saving one when it judges a fact worth keeping is
+ *   the point (Léo, 2026-10-11: the model decides what to remember), so
+ *   `memory_save` must not wait for ULTRON_ALLOW_WRITES. It has no delete.
  */
-const OWN_SERVERS = new Set(['ultron', 'ultron_ui', 'ultron_chrome', 'ultron_eyes'])
+const OWN_SERVERS = new Set([
+  'ultron', 'ultron_ui', 'ultron_chrome', 'ultron_eyes', 'ultron_files', 'ultron_web', 'ultron_memory',
+])
 
 function permitsMcp(server: string, tool: string, allowWrites: boolean): boolean {
   if (OWN_SERVERS.has(server)) return true
