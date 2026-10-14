@@ -193,11 +193,19 @@ caso ela inventa a sua), e o clique na poeira liga o app. Os ganchos de dev fica
     alta intensidade.
   - **Intensidade (`artHeat`):** volume da voz mais o que o humor acrescenta.
   - **Origem alternativa:** `?arteries=core` usa o núcleo do peito em vez dos portais.
-- **`dormant`:**
-  - respiração de 5 s (sobe 3 px; o brilho vai de 36% a 52%);
-  - um batimento fraco por respiração, que sai dos portais e morre no pescoço;
-  - cabeça baixa ~4°, seguindo o cursor pela metade e com ~1 s de atraso;
-  - olhos como brasa que respira.
+- **`dormant`: o Ultron dorme como a alma em chamas** (`proto/soul/form.js`), pedido do
+  Léo: as partículas devem poder assumir qualquer forma, e a alma é uma delas.
+  - Ao dormir, a figura se desfaz em poeira e a alma se monta dela pelas cinco correntes de
+    vento; ao acordar, a alma volta para a poeira e a figura se remonta, 2,4× mais rápida
+    que no boot. Atrás da alma, a poeira dele fica mais apagada.
+  - No app, o boot já monta a alma (o boot do app cai no `dormant` logo em seguida); no
+    protótipo, o boot monta a figura e só depois ela dorme.
+  - As cores seguem o humor (`proto/soul/moods.js`): neutro azul, irritação vermelho (fogo
+    alto e rápido), tédio roxo (lento) e vaidade branco; a troca nasce embaixo da brasa. Um
+    suspiro apaga o fogo um pouco, e um sonho ou o primeiro sinal de um chamado fazem ele
+    crescer. O clique também faz o fogo crescer, e o cursor empurra as partículas.
+  - O que a figura fazia dormindo (respiração de 5 s, batimento, cabeça baixa, olhos de
+    brasa) continua no código, mas não aparece enquanto ela é poeira.
 - **`waking`:** é a resposta do orquestrador ao chamado (seção 5.6), não tem mais animação
   fixa.
 - **Amostragem uniforme:** as camadas da figura são amostradas por difusão de erro
