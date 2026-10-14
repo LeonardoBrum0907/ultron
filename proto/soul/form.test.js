@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createSoulForm, FADE, motionOf, SUMMON_AFTER } from './form.js'
-import { SOUL_MOODS, soulLookOf } from './moods.js'
+import { SHOWS, SOUL_MOODS, soulLookOf, soulSharesOf } from './moods.js'
 import { SOUL_PALETTE_NAMES, SOUL_PALETTES } from './palettes.js'
 import { ASSEMBLY_END } from './swarm.js'
 
@@ -109,23 +109,56 @@ test('its motion swells while the currents carry it, and is still at rest and on
   assert.ok(motionOf('down', 3) > 0.7)
 })
 
-test('with no emotion standing out he sleeps blue and slow', () => {
-  assert.deepEqual(soulLookOf(calm), { ...SOUL_MOODS.neutral, glow: 1, boost: 0 })
+test('with no emotion high he sleeps blue and slow, and his resting vanity shows no white', () => {
+  const { neutral } = SOUL_MOODS
+  assert.deepEqual(soulLookOf(calm), { mix: { blue: 1 }, energy: neutral.energy, pace: neutral.pace, glow: 1, boost: 0 })
+  assert.deepEqual(soulLookOf(new FakeMindOutput({ mood: { vanity: 0.35 } })).mix, { blue: 1 })
 })
 
-test('an emotion that stands out picks its colour, and shows more of itself the stronger it is', () => {
-  const at = (v) => soulLookOf(new FakeMindOutput({ dominant: 'irritation', mood: { irritation: v } }))
-  const { neutral, irritation } = SOUL_MOODS
-  assert.equal(at(0.36).palette, 'red')
-  assert.ok(Math.abs(at(0.35).energy - (neutral.energy + irritation.energy) / 2) < 1e-9)
-  assert.equal(at(1).energy, irritation.energy)
-  assert.equal(at(1).pace, irritation.pace)
+test('a rising emotion shows in tongues before it stands out, leads once it does, and fills the fire when strong', () => {
+  const red = (v) => soulLookOf(new FakeMindOutput({ mood: { irritation: v } })).mix.red ?? 0
+  assert.equal(red(SHOWS.from), 0)
+  assert.ok(red(0.2) > 0.1 && red(0.2) < 0.35, `${red(0.2)}`)
+  assert.ok(red(0.36) > 0.5, `${red(0.36)}`)
+  assert.equal(red(0.7), 1)
+})
+
+test('emotions high together share the fire by how strong they are', () => {
+  const shares = soulSharesOf({ irritation: 0.6, boredom: 0.45 })
+  assert.deepEqual(Object.keys(shares).sort(), ['boredom', 'irritation'])
+  assert.ok(Math.abs(shares.irritation / shares.boredom - 0.6 / 0.45) < 1e-9)
+  const look = soulLookOf(new FakeMindOutput({ mood: { irritation: 0.6, boredom: 0.45 } }))
+  assert.deepEqual(look.mix, { red: shares.irritation, purple: shares.boredom })
+})
+
+test('a strong emotion shows more of its own look, and mixed ones blend theirs by share', () => {
+  const { neutral, irritation, boredom } = SOUL_MOODS
+  const at = (mood) => soulLookOf(new FakeMindOutput({ mood }))
+  assert.equal(at({ irritation: 1 }).energy, irritation.energy)
+  assert.equal(at({ irritation: 1 }).pace, irritation.pace)
+  const half = (look) => neutral.pace + (look.pace - neutral.pace) * (0.5 + 0.5 * (0.6 - 0.35) / 0.65)
+  const shares = soulSharesOf({ irritation: 0.6, boredom: 0.6 })
+  assert.ok(Math.abs(at({ irritation: 0.6, boredom: 0.6 }).pace - (shares.irritation * half(irritation) + shares.boredom * half(boredom))) < 1e-9)
 })
 
 test('an emotion it has no look for shows as neutral', () => {
-  assert.equal(soulLookOf(new FakeMindOutput({ dominant: 'awe', mood: { awe: 0.9 } })).palette, 'blue')
+  assert.deepEqual(soulLookOf(new FakeMindOutput({ dominant: 'awe', mood: { awe: 0.9 } })).mix, { blue: 1 })
 })
 
 test('every look names a palette there is', () => {
   for (const look of Object.values(SOUL_MOODS)) assert.ok(SOUL_PALETTES[look.palette], look.palette)
+})
+
+test('mixed emotions reach the shader as a mix, and a small drift does not turn the fire', () => {
+  const soul = formWith()
+  const u = soul.points.material.uniforms
+  const mixed = (irritation) => new FakeMindOutput({ mood: { irritation, boredom: 0.45 } })
+  soul.show()
+  run(soul, 0.1, mixed(0.6))
+  const shares = soulSharesOf(mixed(0.6).mood)
+  assert.deepEqual(u.uMix.value, SOUL_PALETTE_NAMES.map((name) => ({ red: shares.irritation, purple: shares.boredom })[name] ?? 0))
+  run(soul, 0.1, mixed(0.62))
+  assert.deepEqual(u.uMixWas.value, u.uMix.value)
+  run(soul, 0.1, mixed(0.9))
+  assert.notDeepEqual(u.uMixWas.value, u.uMix.value)
 })

@@ -204,6 +204,13 @@ caso ela inventa a sua), e o clique na poeira liga o app. Os ganchos de dev fica
     alto e rápido), tédio roxo (lento) e vaidade branco; a troca nasce embaixo da brasa. Um
     suspiro apaga o fogo um pouco, e um sonho ou o primeiro sinal de um chamado fazem ele
     crescer. O clique também faz o fogo crescer, e o cursor empurra as partículas.
+  - As emoções se misturam no fogo (pedido do Léo: ver a que se sobressai e também as outras
+    que estão altas). Cada emoção acima de 0,1 (a vaidade só acima de 0,35, onde ela
+    descansa) ganha uma fatia do fogo do tamanho da sua força; o azul neutro cede quando a
+    mais forte passa de `STANDS_OUT`. No shader cada paleta queima em línguas próprias que
+    sobem com as chamas, cobrindo mais ou menos a sua fatia (`MIX` em `tint.js`), as cores
+    se misturam onde as línguas se encontram, e o coração mostra a mais forte. Energia e
+    ritmo do fogo são a média das emoções pela fatia de cada uma.
   - O que a figura fazia dormindo (respiração de 5 s, batimento, cabeça baixa, olhos de
     brasa) continua no código, mas não aparece enquanto ela é poeira.
 - **`waking`:** é a resposta do orquestrador ao chamado (seção 5.6), não tem mais animação

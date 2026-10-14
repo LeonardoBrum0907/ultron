@@ -2,7 +2,7 @@
 // glow, the flames, the smoke over them and the embers. World units: the heart's radius is
 // 1 and its centre is the origin, y up. flight.glsl.js carries a particle here from the dust.
 
-import { TINT } from './tint.js'
+import { MIX, TINT } from './tint.js'
 
 const f = (x) => x.toFixed(3) // a GLSL float
 
@@ -33,14 +33,53 @@ export const PARTS = /* glsl */ `
   vec3 paletteAt(float h, int i) {
     return ramp(h, uPalHot[i], uPalMid[i], uPalCool[i]);
   }
-  // A mix of the palettes (uMix or uMixWas) at heat h.
-  vec3 mixColor(float h, float weights[PALETTES]) {
-    vec3 c = vec3(0.0);
-    for (int i = 0; i < PALETTES; i++) c += weights[i] * paletteAt(h, i);
-    return c;
+  // How much of the colour is changing, 0..1: all of it from one palette to another, a
+  // little when a mix only shifts (then where it turns barely glows).
+  float tintChange() {
+    float moved = 0.0;
+    for (int i = 0; i < PALETTES; i++) moved += abs(uMix[i] - uMixWas[i]);
+    return 0.5 * moved;
   }
-  vec3 heatColor(float h, float k) {
-    return mix(mixColor(h, uMixWas), mixColor(h, uMix), k);
+  // Whether either mix has more than one palette in it; with one, no tongues are needed.
+  bool mixed() {
+    for (int i = 0; i < PALETTES; i++) {
+      if (uMix[i] > 0.0 && uMix[i] < 1.0) return true;
+      if (uMixWas[i] > 0.0 && uMixWas[i] < 1.0) return true;
+    }
+    return false;
+  }
+  // Palette i's tongue here, -1..1: tongues of colour that climb with the flames.
+  float tongue(vec2 p, int i) {
+    return snoise(vec3(p.x * 0.8, p.y * 0.4 - uTime * 0.55, uTime * 0.05 + 7.3 * float(i)));
+  }
+  // A mix of the palettes (uMix or uMixWas) at heat h: each palette's share, lifted by its
+  // tongue here; the highest shows, mixed with the ones close behind it (the softer the edge,
+  // the more).
+  vec3 mixColor(float h, float weights[PALETTES], float lift[PALETTES], float edge) {
+    float score[PALETTES];
+    float top = -1e4;
+    for (int i = 0; i < PALETTES; i++) {
+      score[i] = log(max(weights[i], 1e-4)) + lift[i];
+      top = max(top, score[i]);
+    }
+    vec3 c = vec3(0.0);
+    float total = 0.0;
+    for (int i = 0; i < PALETTES; i++) {
+      float e = exp((score[i] - top) / edge);
+      c += e * paletteAt(h, i);
+      total += e;
+    }
+    return c / total;
+  }
+  // The colour at heat h, k of the way from the mix it was to the one it is becoming. Out in
+  // the fire each palette of a mix burns in its own tongues, about as much of the fire as
+  // its share (tint.js MIX); the heart has none, so there the strongest leads.
+  vec3 heatColor(float h, float k, vec2 p) {
+    float far = mixed() ? smoothstep(${f(MIX.heart[0])}, ${f(MIX.heart[1])}, length(p - vec2(0.0, 0.3))) : 0.0;
+    float lift[PALETTES];
+    for (int i = 0; i < PALETTES; i++) lift[i] = far > 0.0 ? ${f(MIX.tongues)} * far * tongue(p, i) : 0.0;
+    float edge = mix(${f(MIX.heartEdge)}, ${f(MIX.edge)}, far);
+    return mix(mixColor(h, uMixWas, lift, edge), mixColor(h, uMix, lift, edge), k);
   }
   // The whole flame sways, more the higher it is; the smoke rides on the same sway.
   float sway(float y) {

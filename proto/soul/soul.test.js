@@ -8,7 +8,7 @@ import { createAssembly } from './assembly.js'
 import { DESTINATIONS, rollCurrents } from './currents.js'
 import { ASSEMBLY_END, buildSwarm, CURRENTS, PART, routeOf, seededRandom, SOUL_BUDGET } from './swarm.js'
 import { createTouch, TRAIL_N } from './touch.js'
-import { createTint, TINT } from './tint.js'
+import { createTint, MIX, mixDistance, TINT } from './tint.js'
 import { SOUL_VERTEX } from './shaders.js'
 
 test('a seed always builds the same soul', () => {
@@ -195,13 +195,42 @@ test('picked while it turns, the next colour waits and hurries this one on; the 
   tint.tick(1, u)
   tint.pick('purple')
   tint.pick('white')
-  assert.equal(tint.target(), 'white')
+  assert.deepEqual(tint.target(), { white: 1 })
   tint.tick(0.1, u)
   assert.ok(Math.abs(u.uShift.value - (1 + 0.1 * TINT.hurry)) < 1e-9)
   assert.deepEqual(u.uMix.value, allOf('red'))
   tint.tick(TINT.settle, u)
   assert.deepEqual([u.uMixWas.value, u.uMix.value], [allOf('red'), allOf('white')])
   assert.equal(u.uShift.value, 0)
+})
+
+test('a mix turns like a palette, each palette its share, and target() says what it is turning to', () => {
+  const tint = createTint('blue')
+  const u = new FakeTintUniforms()
+  tint.pick({ red: 3, purple: 1 })
+  assert.deepEqual(tint.target(), { red: 0.75, purple: 0.25 })
+  tint.tick(0.1, u)
+  assert.deepEqual([u.uMixWas.value, u.uMix.value], [allOf('blue'), SOUL_PALETTE_NAMES.map((name) => ({ red: 0.75, purple: 0.25 })[name] ?? 0)])
+  tint.tick(TINT.settle, u)
+  tint.pick({ purple: 0.5, red: 1.5 })
+  tint.tick(0.1, u)
+  assert.equal(u.uShift.value, TINT.settle, 'the same mix, scaled, changes nothing')
+})
+
+test('a mix with nothing in it, or an unknown palette, is refused', () => {
+  const tint = createTint('blue')
+  assert.throws(() => tint.pick({ red: 0, purple: -1 }), /soul mix \{"red":0,"purple":-1\} is empty, expected a weight above 0 for one of blue/)
+  assert.throws(() => tint.pick({ green: 1 }), /unknown soul palette "green"/)
+})
+
+test('mixDistance: 0 for the same mix, 2 for nothing in common', () => {
+  assert.equal(mixDistance('red', { red: 2 }), 0)
+  assert.equal(mixDistance('red', 'blue'), 2)
+  assert.ok(Math.abs(mixDistance('red', { red: 0.8, purple: 0.2 }) - 0.4) < 1e-9)
+})
+
+test('the shader is built from MIX', () => {
+  for (const v of [MIX.tongues, MIX.edge, MIX.heartEdge, ...MIX.heart]) assert.ok(SOUL_VERTEX.includes(v.toFixed(3)), `expected ${v.toFixed(3)} in the shader`)
 })
 
 test('the shader starts the change where TINT.from says: the bottom of the ember', () => {

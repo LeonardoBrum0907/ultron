@@ -27,7 +27,7 @@ const UNIFORMS = /* glsl */ `
   uniform vec3  uPalHot[PALETTES];  // every palette (palettes.js): its white-hot core ..
   uniform vec3  uPalMid[PALETTES];  // .. the flame's own colour ..
   uniform vec3  uPalCool[PALETTES]; // .. and its cooling edges, the smoke and the dust
-  uniform float uMix[PALETTES];     // how much of each palette it is turning to (tint.js) ..
+  uniform float uMix[PALETTES];     // how much of each palette it is turning to, summing to 1 (tint.js) ..
   uniform float uMixWas[PALETTES];  // .. how much of each it is turning from ..
   uniform float uShift;   // .. and s since it began to turn
   uniform vec2  uView;    // clip units per world unit, x and y
@@ -63,8 +63,8 @@ export const SOUL_VERTEX = /* glsl */ `
     vec2 p = fly(rest, s.xy, e);
     p += stir(p, w);
     float k = tintAt(p, w);
-    float turning = sin(PI * k); // where the colour is turning, it burns hotter for a moment
-    vColor = heatColor(min(1.0, mix(m.heat, s.heat, e) + 0.25 * turning), k);
+    float turning = sin(PI * k) * tintChange(); // where the colour is turning, it burns hotter for a moment
+    vColor = heatColor(min(1.0, mix(m.heat, s.heat, e) + 0.25 * turning), k, p);
     // A stream in flight glows brighter than the dust it left.
     vAlpha = mix(m.alpha * (1.0 + 1.2 * sin(PI * e)), s.alpha * (1.0 + 0.6 * uFlare + 0.5 * uLevel), e);
     vAlpha *= (1.0 + 0.5 * turning) * uDensity;

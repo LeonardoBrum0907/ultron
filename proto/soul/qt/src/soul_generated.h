@@ -134,13 +134,43 @@ inline constexpr const char *kVertexShader =
   vec3 paletteAt(float h, int i) {
     return ramp(h, uPalHot[i], uPalMid[i], uPalCool[i]);
   }
-  vec3 mixColor(float h, float weights[PALETTES]) {
-    vec3 c = vec3(0.0);
-    for (int i = 0; i < PALETTES; i++) c += weights[i] * paletteAt(h, i);
-    return c;
+  float tintChange() {
+    float moved = 0.0;
+    for (int i = 0; i < PALETTES; i++) moved += abs(uMix[i] - uMixWas[i]);
+    return 0.5 * moved;
   }
-  vec3 heatColor(float h, float k) {
-    return mix(mixColor(h, uMixWas), mixColor(h, uMix), k);
+  bool mixed() {
+    for (int i = 0; i < PALETTES; i++) {
+      if (uMix[i] > 0.0 && uMix[i] < 1.0) return true;
+      if (uMixWas[i] > 0.0 && uMixWas[i] < 1.0) return true;
+    }
+    return false;
+  }
+  float tongue(vec2 p, int i) {
+    return snoise(vec3(p.x * 0.8, p.y * 0.4 - uTime * 0.55, uTime * 0.05 + 7.3 * float(i)));
+  }
+  vec3 mixColor(float h, float weights[PALETTES], float lift[PALETTES], float edge) {
+    float score[PALETTES];
+    float top = -1e4;
+    for (int i = 0; i < PALETTES; i++) {
+      score[i] = log(max(weights[i], 1e-4)) + lift[i];
+      top = max(top, score[i]);
+    }
+    vec3 c = vec3(0.0);
+    float total = 0.0;
+    for (int i = 0; i < PALETTES; i++) {
+      float e = exp((score[i] - top) / edge);
+      c += e * paletteAt(h, i);
+      total += e;
+    }
+    return c / total;
+  }
+  vec3 heatColor(float h, float k, vec2 p) {
+    float far = mixed() ? smoothstep(0.600, 2.400, length(p - vec2(0.0, 0.3))) : 0.0;
+    float lift[PALETTES];
+    for (int i = 0; i < PALETTES; i++) lift[i] = far > 0.0 ? 3.000 * far * tongue(p, i) : 0.0;
+    float edge = mix(0.250, 0.600, far);
+    return mix(mixColor(h, uMixWas, lift, edge), mixColor(h, uMix, lift, edge), k);
   }
   float sway(float y) {
     float lean = smoothstep(0.6, 4.5, y);
@@ -166,7 +196,8 @@ inline constexpr const char *kVertexShader =
     float width = shape.z * sin(PI * pow(v, 0.6)) * (1.0 - 0.3 * v) * (1.0 + 0.22 * lobes) * breath;
     float y = mix(shape.x, shape.y, v) * breath;
     float across = fract(r.y * 2.0);
-    float x = side * (r.w < 0.4 ? pow(across, 0.25) : across) * width;
+)GLSL"
+    R"GLSL(    float x = side * (r.w < 0.4 ? pow(across, 0.25) : across) * width;
     x += 0.18 * v * snoise(vec3(v * 2.0 - uTime * 1.2, layer * 7.0, 1.0)) + sway(y);
     float ends = smoothstep(0.0, 0.06, rise) * (1.0 - smoothstep(0.88, 1.0, v));
     float glow = 1.0 + 5.0 * (breath - 1.0) * (1.0 - 0.5 * layer);
@@ -188,8 +219,7 @@ inline constexpr const char *kVertexShader =
   Spark flame(vec4 r, float w) {
     float life = lifeAt(mix(0.32, 0.62, r.x), 0.08);
     vec2 born = flameBirth(r);
-)GLSL"
-    R"GLSL(    float tongue = smoothstep(-0.6, 0.8, snoise(vec3(born.x * 2.4, uTime * 0.25, 3.7)));
+    float tongue = smoothstep(-0.6, 0.8, snoise(vec3(born.x * 2.4, uTime * 0.25, 3.7)));
     float reach = mix(1.4, 6.2, tongue * (0.55 + 0.45 * r.z)) * (1.0 + 0.5 * uFlare + 0.45 * uLevel);
     float y = born.y + reach * life;
     float bulge = 1.0 + 0.22 * exp(-pow((y - 1.4) / 0.9, 2.0));
@@ -287,7 +317,8 @@ inline constexpr const char *kVertexShader =
     if (part < 1.5) return halo(r, w);
     if (part < 2.5) return flame(r, w);
     if (part < 3.5) return smoke(r, w);
-    if (part < 4.5) return ember(r, w);
+)GLSL"
+    R"GLSL(    if (part < 4.5) return ember(r, w);
     return mote(w);
   }
   void main() {
@@ -300,8 +331,8 @@ inline constexpr const char *kVertexShader =
     vec2 p = fly(rest, s.xy, e);
     p += stir(p, w);
     float k = tintAt(p, w);
-    float turning = sin(PI * k);
-    vColor = heatColor(min(1.0, mix(m.heat, s.heat, e) + 0.25 * turning), k);
+    float turning = sin(PI * k) * tintChange();
+    vColor = heatColor(min(1.0, mix(m.heat, s.heat, e) + 0.25 * turning), k, p);
     vAlpha = mix(m.alpha * (1.0 + 1.2 * sin(PI * e)), s.alpha * (1.0 + 0.6 * uFlare + 0.5 * uLevel), e);
     vAlpha *= (1.0 + 0.5 * turning) * uDensity;
     gl_Position = vec4(p.x * uView.x, (p.y - uYMid) * uView.y, 0.0, 1.0);

@@ -1,7 +1,7 @@
 // The soul as one of Ultron's forms (figure.js). Asleep, he is a soul of fire: it gathers
 // out of his dust as the figure comes apart, and goes back into the dust as he wakes,
-// carried both ways by currents of wind like the figure's own. Its colour, how high it burns
-// and how fast it moves follow his mood (moods.js). It draws in the figure's own scene, over
+// carried both ways by currents of wind like the figure's own. Its colours (as many as the
+// emotions he feels), how high it burns and how fast it moves follow his mood (moods.js). It draws in the figure's own scene, over
 // the same black, so it owns no renderer: the figure sizes it (resize) and moves it on
 // (tick) every frame.
 //
@@ -15,7 +15,7 @@ import { dustCloud, rollCurrents } from './currents.js'
 import { soulLookOf } from './moods.js'
 import { frameSoul, makeSoulPoints, makeSoulUniforms, setCurrents } from './stage.js'
 import { ASSEMBLY_END, buildSwarm, seededRandom, SOUL_BUDGET } from './swarm.js'
-import { createTint } from './tint.js'
+import { createTint, mixDistance } from './tint.js'
 import { createTouch } from './touch.js'
 
 /** What of the soul the window shows: the soul page's frame, so it looks the same. */
@@ -25,6 +25,9 @@ export const SUMMON_AFTER = 0.8
 /** s for the soul's resting particles to fade in, and out once they are back in the dust. */
 export const FADE = { in: 1.2, out: 1.6 }
 const FLARE_FADE = 1.4 // s for a flare to die down, as on the soul page
+// How far his mood's mix of colours moves (tint.js mixDistance, 0..2) before the fire turns to
+// it: his emotions drift all the time, and each turn spreads from the ember again.
+const MIX_STEP = 0.1
 
 /**
  * @typedef {object} SoulFormFrame how the soul is this frame, for the figure
@@ -122,11 +125,10 @@ export function createSoulForm({ seed = 1 } = {}) {
     return motionOf(assembly.mode, clocks.asm)
   }
 
-  // The colour turns (tint.js) and the energy and pace ease to the mood's.
+  // The colours turn to the mood's mix (tint.js) and the energy and pace ease to the mood's.
   function follow(look) {
-    if (!s.look) s.look = { palette: look.palette, tint: createTint(look.palette), mood: easeAvatarState(look) }
-    if (look.palette !== s.look.palette) s.look.tint.pick(look.palette)
-    s.look.palette = look.palette
+    if (!s.look) s.look = { tint: createTint(look.mix), mood: easeAvatarState(look) }
+    if (mixDistance(look.mix, s.look.tint.target()) > MIX_STEP) s.look.tint.pick(look.mix)
     s.look.mood.aim(look)
     return s.look.mood
   }
