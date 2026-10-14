@@ -47,7 +47,7 @@ const particlesOf = (swarm) =>
     lands: swarm.fly[i * 4] + swarm.fly[i * 4 + 1],
   }))
 
-test('the orb gathers first, the fire after it, the smoke last; the dust never leaves', () => {
+test('the heart gathers first, the fire after it, the smoke last; the dust never leaves', () => {
   const ps = particlesOf(buildSwarm(SOUL_BUDGET, seededRandom(2)))
   const of = (name) => ps.filter((p) => p.part === PART[name])
   const first = (name) => Math.min(...of(name).map((p) => p.setOff))

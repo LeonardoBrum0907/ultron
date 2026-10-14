@@ -13,7 +13,7 @@ export const SOUL_BUDGET = { core: 16000, halo: 1500, flame: 46000, smoke: 14000
 export const CURRENTS = 5
 
 // When each part sets off after the summons (s, from at over spread) and how long it flies:
-// the orb gathers first, then the fire it lights, then the smoke over the fire. The dust
+// the heart gathers first, then the fire it lights, then the smoke over the fire. The dust
 // never leaves the cloud.
 const FLIGHT = {
   core: { at: 0, spread: 1.4, dur: [2.0, 2.8] },
@@ -81,7 +81,7 @@ function fillParticle(swarm, i, part, rand) {
  * Which current carries a particle and its lane across the stream (0..1, left to right
  * where it lands), so a stream does not tangle. The five currents carry about as many
  * each: the heart of the fire and its glow; the flames in three, left, middle and right (by where on
- * the orb they are born, r[1]); the smoke and the embers.
+ * the heart they are born, r[1]); the smoke and the embers.
  * @param {string} part a key of PART
  * @param {number[]} r the particle's four random numbers
  * @param {() => number} rand

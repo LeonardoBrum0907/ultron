@@ -8,8 +8,8 @@ import { CURRENTS } from './swarm.js'
 
 /** Where each current delivers: the middle of what it carries (swarm.js routeOf), world units. */
 export const DESTINATIONS = [
-  [0, 0], // the orb and its glow
-  [-0.8, 0.4], // the flames born on the orb's left ..
+  [0, 0], // the heart and its glow
+  [-0.8, 0.4], // the flames born on the heart's left ..
   [0, 1.0], // .. on its top ..
   [0.8, 0.4], // .. and on its right
   [0, 2.8], // the smoke and the embers, at the flame's tip

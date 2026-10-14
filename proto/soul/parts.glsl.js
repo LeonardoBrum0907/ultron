@@ -1,5 +1,5 @@
-// GLSL: where each particle sits in the formed soul and how it looks there: the orb, its
-// glow, the flames, the smoke over them and the embers. World units: the orb's radius is
+// GLSL: where each particle sits in the formed soul and how it looks there: the heart, its
+// glow, the flames, the smoke over them and the embers. World units: the heart's radius is
 // 1 and its centre is the origin, y up. flight.glsl.js carries a particle here from the dust.
 
 export const PARTS = /* glsl */ `
@@ -18,7 +18,7 @@ export const PARTS = /* glsl */ `
   float windAt(float y) { return pow(smoothstep(0.3, 6.0, y), 1.4); }
 
   // How far through its life a particle of the fire is, 0..1 over and over. Its clock starts
-  // when it lands (aFly: set off + flight), so the fire lights from the orb up as the
+  // when it lands (aFly: set off + flight), so the fire lights from the heart up as the
   // particles arrive; until then it waits at start. uFire runs faster while it flares.
   float lifeAt(float rate, float start) {
     float since = uFire - (aFly.x + aFly.y);
@@ -55,7 +55,7 @@ export const PARTS = /* glsl */ `
     return Spark(vec2(x, y), 0.05 + 0.03 * r.w, alpha, heat);
   }
 
-  // The glow round the orb: a few big faint sprites, so there is bloom with no extra pass.
+  // The glow round the heart: a few big faint sprites, so there is bloom with no extra pass.
   Spark halo(vec4 r, float w) {
     float a = r.x * 2.0 * PI;
     float rad = 0.2 + 1.5 * sqrt(r.y);
@@ -64,7 +64,7 @@ export const PARTS = /* glsl */ `
     return Spark(vec2(cos(a), sin(a)) * rad + vec2(0.0, 0.25 * r.z), 0.4 + 0.4 * r.z, alpha, 0.6);
   }
 
-  // Where a flame particle is born on the orb: round its top and sides, so the fire wraps it.
+  // Where a flame particle is born on the heart: round its top and sides, so the fire wraps it.
   vec2 flameBirth(vec4 r) {
     float a = asin(r.y * 2.0 - 1.0) * 1.24;
     return vec2(sin(a), cos(a));

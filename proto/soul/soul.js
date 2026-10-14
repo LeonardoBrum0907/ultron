@@ -1,5 +1,5 @@
-// The soul eater: a glowing orb wrapped in blue fire, smoke curling off the tip, summoned
-// out of a cloud of dust by currents of wind and dissolving back into it.
+// The soul eater: a heart of fire in layers wrapped in blue flames, smoke curling off the
+// tip, summoned out of a cloud of dust by currents of wind and dissolving back into it.
 // Like the figure, every particle is placed by the vertex shader (shaders.js); the CPU
 // only moves a handful of uniforms: the clocks, the currents, a click's flare, the cursor
 // and the microphone.
@@ -12,7 +12,7 @@ import { SOUL_FRAGMENT, SOUL_VERTEX } from './shaders.js'
 import { buildSwarm, CURRENTS, seededRandom, SOUL_BUDGET } from './swarm.js'
 import { createTouch, TRAIL_N } from './touch.js'
 
-// What the screen shows, in world units (the orb's radius): from under the orb to the
+// What the screen shows, in world units (the heart's radius): from under the heart to the
 // smoke's top, and at least this wide on a narrow window.
 const VIEW = { bottom: -3.0, top: 9.0, minWidth: 6.5 }
 const FLARE_FADE = 1.4 // s for a click's flare to die down
