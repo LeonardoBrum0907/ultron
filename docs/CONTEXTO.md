@@ -114,8 +114,16 @@ caso ela inventa a sua), e o clique na poeira liga o app. Os ganchos de dev fica
   as chamas, por último a fumaça). Montada, o clique faz o fogo crescer, o cursor empurra as
   partículas por onde passa, D desfaz em poeira, R desfaz e monta de novo com correntes
   novas, P troca a cor (aos poucos, subindo do coração para as chamas, como fogo mudando de
-  temperatura) e M deixa o microfone alimentar as chamas. `window.__soul.hold(s)` congela a montagem num instante (prints). Os testes da
-  parte de CPU rodam no `npm test`.
+  temperatura) e M deixa o microfone alimentar as chamas. `window.__soul.hold(s)` congela a
+  montagem num instante (prints). Os testes da parte de CPU rodam no `npm test`.
+- **Soul avatar:** `http://localhost:5173/proto/avatar.html` (ou A no Soul Eater) mostra a
+  alma como componente web, `<soul-avatar state="calm">`, já montada, sem poeira e com fundo
+  transparente. O estado escolhe a cor (com a troca gradual), a altura e o ritmo do fogo
+  (`proto/soul/avatar-states.js`; um projeto pode trazer os seus em `el.states`); `el.level`
+  (0..1) levanta o fogo e `el.flare()` faz ele crescer. `quality="lite"` usa um terço das
+  partículas. `npm run build:avatar` gera `dist/soul-avatar/soul-avatar.mjs`, um arquivo só
+  com o three.js dentro, para apps feitos sobre um navegador embutido (Electron, Tauri,
+  WebView2).
 
 ### 4.1 Arte
 

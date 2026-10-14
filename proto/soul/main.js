@@ -1,8 +1,8 @@
 // The soul eater's page (soul.html): the soul and its controls. It starts as dust: a click
 // summons it, and once formed a click flares the fire. The cursor pushes aside the particles
 // it passes, D dissolves it (or summons it), R dissolves and summons it again with new
-// currents, P changes its colour, M lets the microphone feed it, H hides the text and U
-// goes back to Ultron's own demo.
+// currents, P changes its colour, M lets the microphone feed it, H hides the text, U
+// goes back to Ultron's own demo and A opens the soul as an avatar.
 
 import { createHearing } from '../hearing.js'
 import { nextPalette } from './palettes.js'
@@ -41,6 +41,7 @@ function wireControls(soul) {
     if (key === 'm') toggleMic()
     if (key === 'h') document.body.classList.toggle('bare')
     if (key === 'u') location.assign('./index.html')
+    if (key === 'a') location.assign('./avatar.html')
   })
 }
 
