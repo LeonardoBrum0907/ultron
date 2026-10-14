@@ -2069,28 +2069,7 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
     if (s === 'waking' && !wakingByAnswer) return call(auto)
     if (!auto) cancelFlow()
     const now = performance.now() / 1000
-    if (s === 'boot') {
-      // Every boot takes its own routes (R replays the last one instead).
-      if (!keepPlan) rollRoutes(newSeed())
-      lastBoot = { wedge: plan.wedge, route: plan.route }
-      asmMode = 'up'
-      bootAt = now
-      asmV = 0
-    } else if (s === 'offline') {
-      // The figure is whole and about to come apart, so nobody can see the cloud
-      // right now: the moment to deal the wedges out again for the next boot. (Cut
-      // short mid-assembly the cloud is in view, and the arrangement stays.)
-      if (asmMode === 'up' && asmV >= ASM_END - 0.1) rollWedges(newSeed())
-      // Fall apart into the loose cloud (or stay in it, if it never formed).
-      asmMode = asmV > 0 ? 'down' : 'off'
-      asmV = Math.min(asmV, ASM_END)
-    } else if (asmMode !== 'up') {
-      // Jumped past the boot: pick the assembly up from where it is, or call it drawn.
-      const v = asmMode === 'down' ? asmV : 12
-      asmMode = 'up'
-      bootAt = now - v
-      asmV = v
-    }
+    assembleFor(s, now)
     if (s === 'boot' || s === 'offline') {
       bootShown = 0
       $('boot').innerHTML = ''
@@ -2118,6 +2097,32 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
     for (const b of document.querySelectorAll('#bar [data-s]')) b.classList.toggle('on', b.dataset.s === s)
     $('status').textContent = s === 'speaking' ? `${LABEL[s]} · ${speak.tone}` : LABEL[s]
     $('wake').classList.toggle('on', s === 'offline')
+  }
+
+  /** The assembly a state calls for: built from the dust at boot, fallen apart offline. */
+  function assembleFor(s, now) {
+    if (s === 'boot') {
+      // Every boot takes its own routes (R replays the last one instead).
+      if (!keepPlan) rollRoutes(newSeed())
+      lastBoot = { wedge: plan.wedge, route: plan.route }
+      asmMode = 'up'
+      bootAt = now
+      asmV = 0
+    } else if (s === 'offline') {
+      // The figure is whole and about to come apart, so nobody can see the cloud
+      // right now: the moment to deal the wedges out again for the next boot. (Cut
+      // short mid-assembly the cloud is in view, and the arrangement stays.)
+      if (asmMode === 'up' && asmV >= ASM_END - 0.1) rollWedges(newSeed())
+      // Fall apart into the loose cloud (or stay in it, if it never formed).
+      asmMode = asmV > 0 ? 'down' : 'off'
+      asmV = Math.min(asmV, ASM_END)
+    } else if (asmMode !== 'up') {
+      // Jumped past the boot: pick the assembly up from where it is, or call it drawn.
+      const v = asmMode === 'down' ? asmV : 12
+      asmMode = 'up'
+      bootAt = now - v
+      asmV = v
+    }
   }
 
   /* The whole life of a conversation, end to end, on a timer. */
