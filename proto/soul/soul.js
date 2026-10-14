@@ -7,10 +7,10 @@
 import * as THREE from 'three'
 import { createAssembly } from './assembly.js'
 import { rollCurrents } from './currents.js'
-import { SOUL_FRAGMENT, SOUL_VERTEX } from './shaders.js'
-import { buildSwarm, CURRENTS, seededRandom, SOUL_BUDGET } from './swarm.js'
+import { fitSoul, makeSoulPoints, makeSoulUniforms } from './stage.js'
+import { buildSwarm, seededRandom, SOUL_BUDGET } from './swarm.js'
 import { createTint } from './tint.js'
-import { createTouch, TRAIL_N } from './touch.js'
+import { createTouch } from './touch.js'
 
 // What the screen shows, in world units (the heart's radius): from under the heart to the
 // smoke's top, and at least this wide on a narrow window.
@@ -42,9 +42,9 @@ const FLARE_FADE = 1.4 // s for a click's flare to die down
 export function createSoul({ canvas, hears = () => 0, seed = 1 }) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' })
   renderer.setClearColor(0x000000, 1)
-  const uniforms = makeUniforms()
+  const uniforms = makeSoulUniforms()
   const swarm = buildSwarm(SOUL_BUDGET, seededRandom(seed))
-  const points = makePoints(swarm, uniforms)
+  const points = makeSoulPoints(swarm, uniforms)
   const scene = new THREE.Scene()
   scene.add(points)
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1, 1)
@@ -97,65 +97,10 @@ export function createSoul({ canvas, hears = () => 0, seed = 1 }) {
   }
 }
 
-function makeUniforms() {
-  const v4s = () => Array.from({ length: CURRENTS }, () => new THREE.Vector4())
-  return {
-    uTime: { value: 0 },
-    uFire: { value: 0 },
-    uAsm: { value: -1 },
-    uBootAt: { value: 1e9 },
-    uLive: { value: 0 },
-    uCloud: { value: new THREE.Vector3() },
-    uWedge: { value: new Array(CURRENTS).fill(0) },
-    uCurEnds: { value: v4s() },
-    uCurMids: { value: v4s() },
-    uTrail: { value: Array.from({ length: TRAIL_N }, () => new THREE.Vector4(0, -100, 0, 0)) },
-    uFlare: { value: 0 },
-    uLevel: { value: 0 },
-    uHot: { value: new THREE.Color() },
-    uMid: { value: new THREE.Color() },
-    uCool: { value: new THREE.Color() },
-    uHotWas: { value: new THREE.Color() },
-    uMidWas: { value: new THREE.Color() },
-    uCoolWas: { value: new THREE.Color() },
-    uShift: { value: 0 },
-    uView: { value: new THREE.Vector2(1, 1) },
-    uYMid: { value: 0 },
-    uPx: { value: 1 },
-  }
-}
-
-function makePoints(swarm, uniforms) {
-  const geometry = new THREE.BufferGeometry()
-  // three draws as many points as `position` has; the shader never reads it.
-  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(swarm.count * 3), 3))
-  geometry.setAttribute('aRand', new THREE.BufferAttribute(swarm.rand, 4))
-  geometry.setAttribute('aMeta', new THREE.BufferAttribute(swarm.meta, 4))
-  geometry.setAttribute('aFly', new THREE.BufferAttribute(swarm.fly, 4))
-  const material = new THREE.ShaderMaterial({
-    uniforms,
-    vertexShader: SOUL_VERTEX,
-    fragmentShader: SOUL_FRAGMENT,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  })
-  const points = new THREE.Points(geometry, material)
-  points.frustumCulled = false
-  return points
-}
-
+// The whole window, its device pixels capped so a big screen stays smooth.
 function layout(renderer, uniforms, view) {
-  view.vw = window.innerWidth
-  view.vh = window.innerHeight
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5)
-  renderer.setPixelRatio(dpr)
-  renderer.setSize(view.vw, view.vh, false)
-  view.pxPerUnit = Math.min(view.vh / (VIEW.top - VIEW.bottom), view.vw / VIEW.minWidth)
-  uniforms.uView.value.set((2 * view.pxPerUnit) / view.vw, (2 * view.pxPerUnit) / view.vh)
-  uniforms.uYMid.value = (VIEW.top + VIEW.bottom) / 2
-  uniforms.uPx.value = view.pxPerUnit * dpr
+  const box = { width: window.innerWidth, height: window.innerHeight, dpr: Math.min(window.devicePixelRatio || 1, 1.5) }
+  fitSoul(renderer, uniforms, view, VIEW, box)
 }
 
 // The dust at rest, sized from the window it starts in, so it reaches the edges of a
