@@ -104,10 +104,23 @@ const GLOW_OVER_PAGE = {
  * @example fitSoul(renderer, uniforms, view, { bottom: -3, top: 9, minWidth: 6.5 }, { width: 800, height: 600, dpr: 1 })
  */
 export function fitSoul(renderer, uniforms, view, frame, box) {
+  renderer.setPixelRatio(box.dpr)
+  renderer.setSize(box.width, box.height, false)
+  frameSoul(uniforms, view, frame, box)
+}
+
+/**
+ * Frames the soul in a box, as large as the frame allows, without touching the renderer
+ * (for a soul drawn in someone else's scene, sized by its owner).
+ * @param {Record<string, { value: any }>} uniforms from makeSoulUniforms
+ * @param {SoulView} view updated in place
+ * @param {SoulFrame} frame
+ * @param {{ width: number, height: number, dpr: number }} box CSS px, and device px per CSS px
+ * @example frameSoul(uniforms, view, { bottom: -3, top: 9, minWidth: 6.5 }, { width: 800, height: 600, dpr: 1 })
+ */
+export function frameSoul(uniforms, view, frame, box) {
   view.vw = box.width
   view.vh = box.height
-  renderer.setPixelRatio(box.dpr)
-  renderer.setSize(view.vw, view.vh, false)
   view.pxPerUnit = Math.min(view.vh / (frame.top - frame.bottom), view.vw / frame.minWidth)
   uniforms.uView.value.set((2 * view.pxPerUnit) / view.vw, (2 * view.pxPerUnit) / view.vh)
   uniforms.uYMid.value = (frame.top + frame.bottom) / 2
