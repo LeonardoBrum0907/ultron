@@ -124,6 +124,9 @@ caso ela inventa a sua), e o clique na poeira liga o app. Os ganchos de dev fica
   partículas. `npm run build:avatar` gera `dist/soul-avatar/soul-avatar.mjs`, um arquivo só
   com o three.js dentro, para apps feitos sobre um navegador embutido (Electron, Tauri,
   WebView2).
+- **Soul avatar em Qt:** `proto/soul/qt/` tem o `SoulAvatarWidget` (C++, Qt 6, OpenGL 3.3),
+  o mesmo avatar nativo e ao vivo, com um demo; veja o README de lá. O shader e as tabelas
+  vêm do JavaScript por `npm run export:qt`, e o `npm test` avisa se ficaram para trás.
 
 ### 4.1 Arte
 
