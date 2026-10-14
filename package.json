@@ -12,6 +12,8 @@
     "start": "node scripts/start.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:avatar": "vite build --config vite.avatar.config.ts",
+    "export:qt": "node proto/soul/qt/export.mjs",
     "lint": "oxlint",
     "test": "node scripts/test.mjs",
     "preview": "vite preview",

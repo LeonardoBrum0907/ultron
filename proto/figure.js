@@ -13,6 +13,7 @@
 
 import * as THREE from 'three'
 import { createHearing } from './hearing.js'
+import { createSoulForm } from './soul/form.js'
 
 /**
  * @param {object} opts
@@ -1706,6 +1707,11 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
 
   const total = layers.reduce((n, l) => n + l.points.geometry.attributes.position.count, 0)
 
+  // Asleep, Ultron takes another form: the soul of fire (soul/form.js), drawn in this scene
+  // over the same black, gathered out of his dust and dissolved back into it (see assembleFor).
+  const soul = createSoulForm()
+  scene.add(soul.points)
+
   /* ---------------------------------------------------------------- layout */
 
   function layout() {
@@ -1718,6 +1724,7 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
     // Far enough that a current clears any edge of this window, whatever its shape.
     reachNow = 0.5 * 2.0 * Math.hypot(vw / scale, vh / scale)
     setGuides()
+    soul.resize(vw, vh, dprCap)
     // The mouth, where speaking's waves through the dust start (see uPushAt).
     const mouthAt = [CX, MOUTH?.seam ?? FACE.cy]
     const mouthDown = (H - mouthAt[1]) * scale // CSS px from the mouth down to the window's bottom
@@ -1750,6 +1757,7 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
     if (mouse.seen) mouse.speed = Math.min(1, Math.hypot(nx - mouse.tx, ny - mouse.ty) / 40)
     mouse.tx = nx
     mouse.ty = ny
+    soul.pointer(nx, ny)
     if (!mouse.seen) {
       mouse.x = nx
       mouse.y = ny
@@ -2063,34 +2071,22 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
   const ease = { life: 0, rate: 0.5, loose: 1, dim: 0, waveRate: 1.2, waveDepth: 0.3, look: 0, follow: 1, nod: 0, breathW: 0.4, breathAmp: 1.6, breathGlow: 0, beat: 0, stare: 0, sway: 1, trunk: 1, lid: 1, squint: 0, pupil: 1, spin: 0 }
 
   let keepPlan = false
+  // Which form a state wears: asleep, the soul; awake, the figure. Hosted, the boot is the
+  // soul's too: the app's boot ends in dormant at once, so the figure would only begin to
+  // gather and fall apart again. The prototype's boot builds the figure, then it sleeps.
+  const wearsSoul = (s) => s === 'dormant' || (s === 'boot' && !controls)
+  // Waking from the soul, the figure gathers out of the dust as the soul goes back into it:
+  // HANDOFF s later, and REFORM times as fast as at boot, so he is soon there to talk to.
+  const HANDOFF = 0.6
+  const REFORM = 2.4
+  let asmRate = 1 // how fast the assembly's clock runs against real time
   function setState(s, auto = false) {
     if (!STATE[s]) return
     // Nothing wakes it but a call, which the mind answers in its own time (see call()).
     if (s === 'waking' && !wakingByAnswer) return call(auto)
     if (!auto) cancelFlow()
     const now = performance.now() / 1000
-    if (s === 'boot') {
-      // Every boot takes its own routes (R replays the last one instead).
-      if (!keepPlan) rollRoutes(newSeed())
-      lastBoot = { wedge: plan.wedge, route: plan.route }
-      asmMode = 'up'
-      bootAt = now
-      asmV = 0
-    } else if (s === 'offline') {
-      // The figure is whole and about to come apart, so nobody can see the cloud
-      // right now: the moment to deal the wedges out again for the next boot. (Cut
-      // short mid-assembly the cloud is in view, and the arrangement stays.)
-      if (asmMode === 'up' && asmV >= ASM_END - 0.1) rollWedges(newSeed())
-      // Fall apart into the loose cloud (or stay in it, if it never formed).
-      asmMode = asmV > 0 ? 'down' : 'off'
-      asmV = Math.min(asmV, ASM_END)
-    } else if (asmMode !== 'up') {
-      // Jumped past the boot: pick the assembly up from where it is, or call it drawn.
-      const v = asmMode === 'down' ? asmV : 12
-      asmMode = 'up'
-      bootAt = now - v
-      asmV = v
-    }
+    assembleFor(s, now)
     if (s === 'boot' || s === 'offline') {
       bootShown = 0
       $('boot').innerHTML = ''
@@ -2118,6 +2114,54 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
     for (const b of document.querySelectorAll('#bar [data-s]')) b.classList.toggle('on', b.dataset.s === s)
     $('status').textContent = s === 'speaking' ? `${LABEL[s]} · ${speak.tone}` : LABEL[s]
     $('wake').classList.toggle('on', s === 'offline')
+  }
+
+  /**
+   * The forms a state calls for: the figure built from the dust at boot and whenever he is
+   * awake, the soul while he sleeps, and neither offline. A form not called for goes back
+   * into the dust as the other gathers out of it.
+   */
+  function assembleFor(s, now) {
+    if (wearsSoul(s) || s === 'offline') comeApart()
+    else if (s === 'boot') bootFigure(now)
+    else if (asmMode !== 'up') gatherFigure(now)
+    if (wearsSoul(s)) soul.show()
+    else soul.hide()
+  }
+
+  function bootFigure(now) {
+    // Every boot takes its own routes (R replays the last one instead).
+    if (!keepPlan) rollRoutes(newSeed())
+    lastBoot = { wedge: plan.wedge, route: plan.route }
+    startAssembly(now)
+  }
+
+  function comeApart() {
+    // The figure is whole and about to come apart, so nobody can see the cloud
+    // right now: the moment to deal the wedges out again for the next boot. (Cut
+    // short mid-assembly the cloud is in view, and the arrangement stays.)
+    if (asmMode === 'up' && asmV >= ASM_END - 0.1) rollWedges(newSeed())
+    // Fall apart into the loose cloud (or stay in it, if it never formed).
+    asmMode = asmV > 0 ? 'down' : 'off'
+    asmV = Math.min(asmV, ASM_END)
+  }
+
+  function gatherFigure(now) {
+    // Waking from the soul: out of the dust on new routes, like a boot but quicker.
+    if (asmMode === 'off' && soul.present()) {
+      rollRoutes(newSeed())
+      return startAssembly(now, { after: HANDOFF, rate: REFORM })
+    }
+    // Jumped past the boot: pick the assembly up from where it is, or call it drawn.
+    startAssembly(now, { from: asmMode === 'down' ? asmV : 12, rate: soul.present() ? REFORM : 1 })
+  }
+
+  /** The assembly runs on from `from` (s on its own clock), `after` s from now, `rate` times as fast as real time. */
+  function startAssembly(now, { from = 0, after = 0, rate = 1 } = {}) {
+    asmMode = 'up'
+    asmRate = rate
+    bootAt = now + after - from / rate
+    asmV = from - after * rate
   }
 
   /* The whole life of a conversation, end to end, on a timer. */
@@ -2235,6 +2279,8 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
   on($('flow'), 'click', () => runFlow())
   // A click on the awake figure sends a pulse of light through it from where it landed.
   on(canvas, 'pointerdown', (e) => {
+    // Asleep, the soul's fire flares instead, as on its own page.
+    if (soul.formed()) soul.flare()
     if (state === 'offline' || state === 'boot') return
     click.x = (e.clientX - vw / 2) / scale + CX
     click.y = (e.clientY - vh) / scale + H
@@ -2317,6 +2363,8 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
     // makes it speak in that one from the next time it starts speaking.
     speak,
     tone: null,
+    // Dev: the soul he sleeps as (soul/form.js): soul.flare(), soul.present() ...
+    soul,
     // Dev: what the cursor interactions are doing right now.
     info: () => ({ click: { ...click }, look: { ...look }, clickU: clickU.value.toArray(), easeLook: ease.look, state }),
   }
@@ -2405,7 +2453,7 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
       asmMode = 'hold'
       asmV = dev.hold
     }
-    if (asmMode === 'up') asmV = clock - bootAt
+    if (asmMode === 'up') asmV = (clock - bootAt) * asmRate
     else if (asmMode === 'down') {
       asmV -= dt * 3.2
       if (asmV <= -0.2) {
@@ -2473,6 +2521,10 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
     if (tickMind) mind.tick(dt)
     const mo = mind.output()
     const ch = (name) => mind.channel(mo, name)
+    // The soul, while it is there, shows his mood (soul/moods.js). His dust dims behind it, so
+    // the soul is what stands out of the dark, as on its own page.
+    const soulNow = soul.tick(dt, mo)
+    const dustDim = 1 - 0.45 * soulNow.presence
 
     // The click: a pulse of light that fades in 2.5 s, and the figure's shimmer speeds up
     // for a moment (up to 2.5x, letting go in about 0.6 s).
@@ -2802,6 +2854,7 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
     if (motion) {
       const sm = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t) }
       moving.assembly = asmMode === 'up' ? sm(0, 1.2, asm) * (1 - sm(8.2, ASM_END, asm)) : asmMode === 'down' ? 0.8 * sm(-0.2, 1.5, asm) : 0
+      moving.assembly = Math.max(moving.assembly, soulNow.motion)
       moving.cursor = mouse.seen ? mouse.speed : 0
       moving.crumble = crumbleAmt
       moving.rebuild = rebuildAmt
@@ -2846,7 +2899,7 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
       u.uSpins.value = l.kind === 'veins' || l.kind === 'redlight' || l.kind === 'artery' ? 1 : 0
       u.uDim.value = ease.dim * (meta.dimScale ?? 1)
       u.uRed.value = l.kind === 'figure' || back ? redNow : 0
-      u.uLife.value = back ? 0.5 + 0.5 * lifeNow : lifeNow
+      u.uLife.value = (back ? 0.5 + 0.5 * lifeNow : lifeNow) * dustDim
       u.uLoose.value = ease.loose
       u.uWaveRate.value = ease.waveRate
       u.uWaveDepth.value = ease.waveDepth
@@ -2922,6 +2975,7 @@ export async function createFigure({ canvas, mind, controls = false, tickMind = 
         l.points.geometry.dispose()
         l.points.material.dispose()
       }
+      soul.dispose()
       renderer.dispose()
       if (window[controls ? '__ultron' : '__figure'] === hooks) delete window[controls ? '__ultron' : '__figure']
     },

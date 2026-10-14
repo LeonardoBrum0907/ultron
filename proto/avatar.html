@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ULTRON — soul avatar</title>
+    <style>
+      :root {
+        --cyan: #19ddff;
+        --amber: #ffb54d;
+        --line: rgba(25, 221, 255, 0.18);
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; background: #000; color: var(--cyan); }
+      body { font-family: 'Share Tech Mono', Consolas, 'Courier New', monospace; padding: 22px 28px 40px; }
+      h1 { margin: 0 0 4px; font-size: 22px; font-weight: normal; letter-spacing: 0.5em; }
+      .sub { font-size: 10px; letter-spacing: 0.3em; opacity: 0.45; text-transform: uppercase; }
+      .stage { display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; margin-top: 24px; }
+      #main { width: 360px; height: 480px; }
+      .controls { display: grid; gap: 14px; min-width: 260px; font-size: 12px; letter-spacing: 0.12em; }
+      .controls b { color: var(--amber); font-weight: normal; }
+      .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      button {
+        font: inherit; color: var(--cyan); background: transparent; border: 1px solid var(--line);
+        padding: 6px 12px; letter-spacing: 0.12em; cursor: pointer; text-transform: uppercase;
+      }
+      button.on { border-color: var(--cyan); background: rgba(25, 221, 255, 0.12); }
+      input[type='range'] { width: 180px; accent-color: var(--cyan); }
+      h2 { font-size: 12px; font-weight: normal; letter-spacing: 0.3em; margin: 36px 0 12px; opacity: 0.7; text-transform: uppercase; }
+      .gallery { display: flex; flex-wrap: wrap; gap: 16px; }
+      .card { padding: 10px; border: 1px solid var(--line); text-align: center; font-size: 10px; letter-spacing: 0.2em; }
+      .card.light { background: #f1f4f6; color: #2c3a40; }
+      .card.mid { background: #22303a; }
+      .card soul-avatar { width: 120px; height: 160px; display: block; }
+      pre { font-size: 12px; line-height: 1.6; background: #061016; border: 1px solid var(--line); padding: 14px; overflow-x: auto; max-width: 760px; }
+      .hint { margin-top: 18px; font-size: 10px; opacity: 0.4; letter-spacing: 0.16em; }
+    </style>
+  </head>
+  <body>
+    <h1>U.L.T.R.O.N.</h1>
+    <div class="sub">soul avatar · a web component that follows a state</div>
+
+    <div class="stage">
+      <soul-avatar id="main" state="calm" interactive></soul-avatar>
+      <div class="controls">
+        <div>state: <b id="state">calm</b></div>
+        <div class="row" id="states"></div>
+        <div class="row">level <input id="level" type="range" min="0" max="1" step="0.01" value="0" /> <b id="levelValue">0.00</b></div>
+        <div class="row"><button id="flare">flare</button></div>
+        <div class="row">quality <button data-quality="full" class="on">full</button><button data-quality="lite">lite</button></div>
+        <div><span id="count"></span></div>
+      </div>
+    </div>
+
+    <h2>small and many (quality lite), changing state by themselves</h2>
+    <div class="gallery" id="gallery"></div>
+
+    <h2>use it</h2>
+    <pre id="usage"></pre>
+
+    <div class="hint">1-4 state · F flare · the cursor pushes the big one's particles · S soul eater · U back to Ultron</div>
+    <script type="module" src="./soul/avatar-page.js"></script>
+  </body>
+</html>

@@ -107,6 +107,26 @@ caso ela inventa a sua), e o clique na poeira liga o app. Os ganchos de dev fica
 - **Arquivo principal:** `proto/main.js`, com cerca de 2.500 linhas, Three.js e um único
   vertex shader para todas as camadas. A audição (microfone e voz simulada) fica em
   `proto/hearing.js`.
+- **Soul Eater:** `http://localhost:5173/proto/soul.html` (ou S na demo) é outro personagem
+  de partículas: um coração de fogo em camadas (chama externa, meio e brasa) com chamas e
+  fumaça, tudo no shader de `proto/soul/`. Começa como poeira em repouso; o clique invoca a
+  alma, que se monta com cinco correntes de vento como o Ultron (o coração primeiro, depois
+  as chamas, por último a fumaça). Montada, o clique faz o fogo crescer, o cursor empurra as
+  partículas por onde passa, D desfaz em poeira, R desfaz e monta de novo com correntes
+  novas, P troca a cor (aos poucos, nascendo num ponto embaixo da brasa e se espalhando
+  dali para as chamas, como fogo mudando de temperatura) e M deixa o microfone alimentar as chamas. `window.__soul.hold(s)` congela a
+  montagem num instante (prints). Os testes da parte de CPU rodam no `npm test`.
+- **Soul avatar:** `http://localhost:5173/proto/avatar.html` (ou A no Soul Eater) mostra a
+  alma como componente web, `<soul-avatar state="calm">`, já montada, sem poeira e com fundo
+  transparente. O estado escolhe a cor (com a troca gradual), a altura e o ritmo do fogo
+  (`proto/soul/avatar-states.js`; um projeto pode trazer os seus em `el.states`); `el.level`
+  (0..1) levanta o fogo e `el.flare()` faz ele crescer. `quality="lite"` usa um terço das
+  partículas. `npm run build:avatar` gera `dist/soul-avatar/soul-avatar.mjs`, um arquivo só
+  com o three.js dentro, para apps feitos sobre um navegador embutido (Electron, Tauri,
+  WebView2).
+- **Soul avatar em Qt:** `proto/soul/qt/` tem o `SoulAvatarWidget` (C++, Qt 6, OpenGL 3.3),
+  o mesmo avatar nativo e ao vivo, com um demo; veja o README de lá. O shader e as tabelas
+  vêm do JavaScript por `npm run export:qt`, e o `npm test` avisa se ficaram para trás.
 
 ### 4.1 Arte
 
@@ -173,11 +193,26 @@ caso ela inventa a sua), e o clique na poeira liga o app. Os ganchos de dev fica
     alta intensidade.
   - **Intensidade (`artHeat`):** volume da voz mais o que o humor acrescenta.
   - **Origem alternativa:** `?arteries=core` usa o núcleo do peito em vez dos portais.
-- **`dormant`:**
-  - respiração de 5 s (sobe 3 px; o brilho vai de 36% a 52%);
-  - um batimento fraco por respiração, que sai dos portais e morre no pescoço;
-  - cabeça baixa ~4°, seguindo o cursor pela metade e com ~1 s de atraso;
-  - olhos como brasa que respira.
+- **`dormant`: o Ultron dorme como a alma em chamas** (`proto/soul/form.js`), pedido do
+  Léo: as partículas devem poder assumir qualquer forma, e a alma é uma delas.
+  - Ao dormir, a figura se desfaz em poeira e a alma se monta dela pelas cinco correntes de
+    vento; ao acordar, a alma volta para a poeira e a figura se remonta, 2,4× mais rápida
+    que no boot. Atrás da alma, a poeira dele fica mais apagada.
+  - No app, o boot já monta a alma (o boot do app cai no `dormant` logo em seguida); no
+    protótipo, o boot monta a figura e só depois ela dorme.
+  - As cores seguem o humor (`proto/soul/moods.js`): neutro azul, irritação vermelho (fogo
+    alto e rápido), tédio roxo (lento) e vaidade branco; a troca nasce embaixo da brasa. Um
+    suspiro apaga o fogo um pouco, e um sonho ou o primeiro sinal de um chamado fazem ele
+    crescer. O clique também faz o fogo crescer, e o cursor empurra as partículas.
+  - As emoções se misturam no fogo (pedido do Léo: ver a que se sobressai e também as outras
+    que estão altas). Cada emoção acima de 0,1 (a vaidade só acima de 0,35, onde ela
+    descansa) ganha uma fatia do fogo do tamanho da sua força; o azul neutro cede quando a
+    mais forte passa de `STANDS_OUT`. No shader cada paleta queima em línguas próprias que
+    sobem com as chamas, cobrindo mais ou menos a sua fatia (`MIX` em `tint.js`), as cores
+    se misturam onde as línguas se encontram, e o coração mostra a mais forte. Energia e
+    ritmo do fogo são a média das emoções pela fatia de cada uma.
+  - O que a figura fazia dormindo (respiração de 5 s, batimento, cabeça baixa, olhos de
+    brasa) continua no código, mas não aparece enquanto ela é poeira.
 - **`waking`:** é a resposta do orquestrador ao chamado (seção 5.6), não tem mais animação
   fixa.
 - **Amostragem uniforme:** as camadas da figura são amostradas por difusão de erro
