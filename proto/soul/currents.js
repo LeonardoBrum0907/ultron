@@ -31,6 +31,20 @@ export const DESTINATIONS = [
  */
 
 /**
+ * The dust at rest, sized from the window it starts in, so it reaches the edges of a wide
+ * monitor too (and, like Ultron's, it does not move when the window changes).
+ * @param {{ pxPerUnit: number, vw: number, vh: number }} view the window (stage.js SoulView)
+ * @param {{ bottom: number, top: number }} frame what of the soul the window shows, world units
+ * @returns {DustCloud}
+ * @example const cloud = dustCloud({ pxPerUnit: 50, vw: 800, vh: 600 }, { bottom: -3, top: 9 })
+ */
+export function dustCloud(view, frame) {
+  const w = view.vw / view.pxPerUnit
+  const h = view.vh / view.pxPerUnit
+  return { cx: 0, cy: (frame.top + frame.bottom) / 2, R: Math.max(9, 0.6 * Math.hypot(w, h)), reach: Math.hypot(w, h) }
+}
+
+/**
  * Draws the currents for one summons.
  * @param {() => number} rand where the random numbers come from
  * @param {DustCloud} cloud

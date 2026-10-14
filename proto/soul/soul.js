@@ -6,8 +6,8 @@
 
 import * as THREE from 'three'
 import { createAssembly } from './assembly.js'
-import { rollCurrents } from './currents.js'
-import { fitSoul, makeSoulPoints, makeSoulUniforms } from './stage.js'
+import { dustCloud, rollCurrents } from './currents.js'
+import { fitSoul, makeSoulPoints, makeSoulUniforms, setCurrents } from './stage.js'
 import { buildSwarm, seededRandom, SOUL_BUDGET } from './swarm.js'
 import { createTint } from './tint.js'
 import { createTouch } from './touch.js'
@@ -52,7 +52,7 @@ export function createSoul({ canvas, hears = () => 0, seed = 1 }) {
   const resize = () => layout(renderer, uniforms, view)
   window.addEventListener('resize', resize)
   resize()
-  const cloud = dustCloud(view)
+  const cloud = dustCloud(view, VIEW)
   uniforms.uCloud.value.set(cloud.cx, cloud.cy, cloud.R)
   const newCurrents = () => setCurrents(uniforms, rollCurrents(seededRandom((Math.random() * 2 ** 32) >>> 0), cloud))
   newCurrents()
@@ -103,23 +103,9 @@ function layout(renderer, uniforms, view) {
   fitSoul(renderer, uniforms, view, VIEW, box)
 }
 
-// The dust at rest, sized from the window it starts in, so it reaches the edges of a
-// wide monitor too (and, like Ultron's, it does not move when the window changes).
-function dustCloud(view) {
-  const w = view.vw / view.pxPerUnit
-  const h = view.vh / view.pxPerUnit
-  return { cx: 0, cy: (VIEW.top + VIEW.bottom) / 2, R: Math.max(9, 0.6 * Math.hypot(w, h)), reach: Math.hypot(w, h) }
-}
-
 // Dev: the summons frozen at state.hold seconds, as if it had begun that long ago.
 function held(state) {
   return { asm: state.hold, fire: state.hold, bootAt: state.now - state.hold, live: 0, landed: false }
-}
-
-function setCurrents(uniforms, { wedges, ends, mids }) {
-  uniforms.uWedge.value = wedges
-  ends.forEach((e, k) => uniforms.uCurEnds.value[k].set(...e))
-  mids.forEach((m, k) => uniforms.uCurMids.value[k].set(...m))
 }
 
 function setClocks(uniforms, state, clocks) {

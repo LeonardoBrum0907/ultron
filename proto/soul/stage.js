@@ -85,6 +85,18 @@ export function makeSoulPoints(swarm, uniforms, { clear = 'black' } = {}) {
   return points
 }
 
+/**
+ * Hands the shader the currents of one summons (currents.js rollCurrents).
+ * @param {Record<string, { value: any }>} uniforms from makeSoulUniforms
+ * @param {import('./currents.js').Currents} currents
+ * @example setCurrents(uniforms, rollCurrents(seededRandom(3), cloud))
+ */
+export function setCurrents(uniforms, { wedges, ends, mids }) {
+  uniforms.uWedge.value = wedges
+  ends.forEach((e, k) => uniforms.uCurEnds.value[k].set(...e))
+  mids.forEach((m, k) => uniforms.uCurMids.value[k].set(...m))
+}
+
 // Colour adds as light; opacity adds too, so the canvas holds premultiplied light.
 const GLOW_OVER_PAGE = {
   blending: THREE.CustomBlending,
