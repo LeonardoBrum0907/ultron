@@ -1,15 +1,17 @@
 /**
  * Ultron's own tools for one conversation: the blades, the interface, the
- * user's Chrome, the camera, and reading files and pages. Each server key is
- * also the middle part of its tools' names (`mcp__<key>__<tool>`), which
- * bridge/policy.ts reads.
+ * user's Chrome, the camera, reading files and pages, and long-term memory.
+ * Each server key is also the middle part of its tools' names
+ * (`mcp__<key>__<tool>`), which bridge/policy.ts reads.
  */
 import { displayServer } from '../panels.ts'
 import { uiServer } from '../ui.ts'
 import { chromeServer } from '../chrome.mjs'
 import { visionServer } from '../vision.ts'
 import type { Frame } from '../devices.ts'
+import type { LongMemory } from '../long-memory/long-memory.ts'
 import { filesServer } from './files.ts'
+import { memoryServer } from './memory.ts'
 import type { ToolServer } from './tool.ts'
 import { webServer } from './web.ts'
 
@@ -23,13 +25,15 @@ export interface OwnToolsIo {
   allowWrites: boolean
   /** Where relative file paths start: the home directory. */
   home: string
+  /** Long-term memory, or null when none is configured (no ULTRON_MEMORY_URL). */
+  memory: LongMemory | null
 }
 
 /**
  * @example
- *   const tools = ownTools({ send: devices.broadcast, ask, allowWrites: false, home: homedir() })
+ *   const tools = ownTools({ send: devices.broadcast, ask, allowWrites: false, home: homedir(), memory: null })
  */
-export function ownTools({ send, ask, allowWrites, home }: OwnToolsIo): Record<string, ToolServer> {
+export function ownTools({ send, ask, allowWrites, home, memory }: OwnToolsIo): Record<string, ToolServer> {
   return {
     // The HUD. Its handler sends to every connected app, so a `display` call
     // lands on each screen directly.
@@ -50,5 +54,7 @@ export function ownTools({ send, ask, allowWrites, home }: OwnToolsIo): Record<s
     // switches the built-ins off when these are present (brain/claude.ts).
     ultron_files: filesServer(home),
     ultron_web: webServer(),
+    // Only with a store to remember in; without one the model is never told it can.
+    ...(memory ? { ultron_memory: memoryServer(memory) } : {}),
   }
 }

@@ -5,7 +5,9 @@ Refactors in progress and known traps. Add a line when you find one; remove it w
 ## Traps
 
 - `bridge/policy.ts` (`toolPolicy`): the read-only rule matches a verb at the start of
-  the tool name, so MCP tools like `memory_query` are blocked without `ULTRON_ALLOW_WRITES`.
+  the tool name, so an external MCP tool like ai-memory's own `memory_query` is blocked
+  without `ULTRON_ALLOW_WRITES`. Ultron reaches ai-memory through its own
+  `ultron_memory` tools instead (`bridge/tools/memory.ts`), which the policy names.
 - `web_fetch` (`bridge/tools/web.ts`) goes through `net.mjs`, which ignores
   `HTTPS_PROXY`: on a machine that only reaches the web through a proxy (a cloud
   sandbox) it answers "upstream unreachable", as the page proxy does.
