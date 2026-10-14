@@ -1,15 +1,15 @@
 // The soul eater: a heart of fire in layers wrapped in blue flames, smoke curling off the
 // tip, summoned out of a cloud of dust by currents of wind and dissolving back into it.
 // Like the figure, every particle is placed by the vertex shader (shaders.js); the CPU
-// only moves a handful of uniforms: the clocks, the currents, a click's flare, the cursor
-// and the microphone.
+// only moves a handful of uniforms: the clocks, the currents, a click's flare, the cursor,
+// the microphone and the colour (tint.js).
 
 import * as THREE from 'three'
 import { createAssembly } from './assembly.js'
 import { rollCurrents } from './currents.js'
-import { SOUL_PALETTES } from './palettes.js'
 import { SOUL_FRAGMENT, SOUL_VERTEX } from './shaders.js'
 import { buildSwarm, CURRENTS, seededRandom, SOUL_BUDGET } from './swarm.js'
+import { createTint } from './tint.js'
 import { createTouch, TRAIL_N } from './touch.js'
 
 // What the screen shows, in world units (the heart's radius): from under the heart to the
@@ -23,7 +23,7 @@ const FLARE_FADE = 1.4 // s for a click's flare to die down
  * @property {() => void} dissolve back into the dust
  * @property {() => void} replay dissolve, then summon again (new currents every time)
  * @property {(xPx: number, yPx: number) => void} pointer the cursor is here now (CSS px)
- * @property {(name: string) => void} setPalette a key of SOUL_PALETTES
+ * @property {(name: string) => void} setPalette turns it to this colour, gradually (a key of SOUL_PALETTES)
  * @property {() => 'rest' | 'up' | 'down'} mode
  * @property {(seconds: number | null) => void} hold dev: freezes the summons at that moment (null lets go)
  * @property {number} particles how many particles it has
@@ -56,7 +56,7 @@ export function createSoul({ canvas, hears = () => 0, seed = 1 }) {
   uniforms.uCloud.value.set(cloud.cx, cloud.cy, cloud.R)
   const newCurrents = () => setCurrents(uniforms, rollCurrents(seededRandom((Math.random() * 2 ** 32) >>> 0), cloud))
   newCurrents()
-  setPalette(uniforms, 'blue')
+  const tint = createTint('blue')
   const assembly = createAssembly()
   const touch = createTouch(view, (VIEW.top + VIEW.bottom) / 2)
   const state = { flare: 0, now: 0, last: performance.now(), raf: 0, hold: null }
@@ -72,6 +72,7 @@ export function createSoul({ canvas, hears = () => 0, seed = 1 }) {
     const clocks = state.hold == null ? ticked : held(state)
     if (clocks.landed) newCurrents() // for the dissolve and the next summons
     touch.tick(dt, uniforms)
+    tint.tick(dt, uniforms)
     setClocks(uniforms, state, clocks)
     renderer.render(scene, camera)
   }
@@ -82,7 +83,7 @@ export function createSoul({ canvas, hears = () => 0, seed = 1 }) {
     dissolve: () => assembly.dissolve(),
     replay: () => assembly.replay(state.now),
     pointer: (xPx, yPx) => touch.move(xPx, yPx),
-    setPalette: (name) => setPalette(uniforms, name),
+    setPalette: (name) => tint.pick(name),
     mode: () => assembly.mode,
     hold: (seconds) => void (state.hold = seconds),
     particles: swarm.count,
@@ -114,6 +115,10 @@ function makeUniforms() {
     uHot: { value: new THREE.Color() },
     uMid: { value: new THREE.Color() },
     uCool: { value: new THREE.Color() },
+    uHotWas: { value: new THREE.Color() },
+    uMidWas: { value: new THREE.Color() },
+    uCoolWas: { value: new THREE.Color() },
+    uShift: { value: 0 },
     uView: { value: new THREE.Vector2(1, 1) },
     uYMid: { value: 0 },
     uPx: { value: 1 },
@@ -186,12 +191,4 @@ function easeLevel(uniforms, dt, level) {
   const ease = level > uniforms.uLevel.value ? 12 : 3
   uniforms.uLevel.value += (level - uniforms.uLevel.value) * Math.min(1, dt * ease)
   return uniforms.uLevel.value
-}
-
-function setPalette(uniforms, name) {
-  const palette = SOUL_PALETTES[name]
-  if (!palette) throw new Error(`unknown soul palette "${name}", expected one of ${Object.keys(SOUL_PALETTES).join(', ')}`)
-  uniforms.uHot.value.setRGB(...palette.hot)
-  uniforms.uMid.value.setRGB(...palette.mid)
-  uniforms.uCool.value.setRGB(...palette.cool)
 }

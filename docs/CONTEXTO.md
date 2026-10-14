@@ -110,10 +110,11 @@ caso ela inventa a sua), e o clique na poeira liga o app. Os ganchos de dev fica
 - **Soul Eater:** `http://localhost:5173/proto/soul.html` (ou S na demo) é outro personagem
   de partículas: um coração de fogo em camadas (chama externa, meio e brasa) com chamas e
   fumaça, tudo no shader de `proto/soul/`. Começa como poeira em repouso; o clique invoca a
-  alma, que se monta com cinco correntes de vento como o Ultron (o coração primeiro, depois as chamas, por último a fumaça). Montada, o clique faz o
-  fogo crescer, o cursor empurra as partículas por onde passa, D desfaz em poeira, R
-  desfaz e monta de novo com correntes novas, P troca a cor e M deixa o microfone alimentar
-  as chamas. `window.__soul.hold(s)` congela a montagem num instante (prints). Os testes da
+  alma, que se monta com cinco correntes de vento como o Ultron (o coração primeiro, depois
+  as chamas, por último a fumaça). Montada, o clique faz o fogo crescer, o cursor empurra as
+  partículas por onde passa, D desfaz em poeira, R desfaz e monta de novo com correntes
+  novas, P troca a cor (aos poucos, subindo do coração para as chamas, como fogo mudando de
+  temperatura) e M deixa o microfone alimentar as chamas. `window.__soul.hold(s)` congela a montagem num instante (prints). Os testes da
   parte de CPU rodam no `npm test`.
 
 ### 4.1 Arte

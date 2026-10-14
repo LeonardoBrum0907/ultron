@@ -25,6 +25,10 @@ const UNIFORMS = /* glsl */ `
   uniform vec3  uHot;     // the palette: white-hot core ..
   uniform vec3  uMid;     // .. the flame's own colour ..
   uniform vec3  uCool;    // .. and its cooling edges, the smoke and the dust
+  uniform vec3  uHotWas;  // the palette it is turning from (tint.js) ..
+  uniform vec3  uMidWas;
+  uniform vec3  uCoolWas;
+  uniform float uShift;   // .. and s since it began to turn
   uniform vec2  uView;    // clip units per world unit, x and y
   uniform float uYMid;    // world y at the middle of the screen
   uniform float uPx;      // device px per world unit
@@ -56,9 +60,12 @@ export const SOUL_VERTEX = /* glsl */ `
     vec2 rest = loose(restHome(), mix(min(uTime, uBootAt + aFly.x), uTime, uLive), w);
     vec2 p = fly(rest, s.xy, e);
     p += stir(p, w);
-    vColor = heatColor(mix(m.heat, s.heat, e));
+    float k = tintAt(p, w);
+    float turning = sin(PI * k); // where the colour is turning, it burns hotter for a moment
+    vColor = heatColor(min(1.0, mix(m.heat, s.heat, e) + 0.25 * turning), k);
     // A stream in flight glows brighter than the dust it left.
     vAlpha = mix(m.alpha * (1.0 + 1.2 * sin(PI * e)), s.alpha * (1.0 + 0.6 * uFlare + 0.5 * uLevel), e);
+    vAlpha *= 1.0 + 0.5 * turning;
     gl_Position = vec4(p.x * uView.x, (p.y - uYMid) * uView.y, 0.0, 1.0);
     // It only swells to its size in the soul as it lands (the glow's sprites are big).
     gl_PointSize = max(1.0, mix(m.size, s.size, e * e * e) * uPx);

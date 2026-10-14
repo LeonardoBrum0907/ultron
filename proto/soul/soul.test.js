@@ -8,6 +8,7 @@ import { createAssembly } from './assembly.js'
 import { DESTINATIONS, rollCurrents } from './currents.js'
 import { ASSEMBLY_END, buildSwarm, CURRENTS, PART, routeOf, seededRandom, SOUL_BUDGET } from './swarm.js'
 import { createTouch, TRAIL_N } from './touch.js'
+import { createTint, TINT } from './tint.js'
 
 test('a seed always builds the same soul', () => {
   const a = buildSwarm({ core: 3, flame: 5 }, seededRandom(42))
@@ -163,4 +164,48 @@ test('the cursor leaves a trail in world units, newest first, with the way it we
   const [now] = u.uTrail.value
   assert.deepEqual([now.x, now.y], [1, 3])
   assert.ok(now.z > 0 && Math.abs(now.w) < 1e-9, 'moving right')
+})
+
+class FakeTintUniforms {
+  constructor() {
+    const rgb = () => ({ setRGB(r, g, b) { this.rgb = [r, g, b] } })
+    for (const name of ['uHot', 'uMid', 'uCool', 'uHotWas', 'uMidWas', 'uCoolWas']) this[name] = { value: rgb() }
+    this.uShift = { value: 0 }
+  }
+}
+
+test('a new colour turns from the old one, and has turned everywhere by TINT.settle', () => {
+  const tint = createTint('blue')
+  const u = new FakeTintUniforms()
+  tint.pick('red')
+  tint.tick(0.1, u)
+  assert.deepEqual([u.uMidWas.value.rgb, u.uMid.value.rgb], [SOUL_PALETTES.blue.mid, SOUL_PALETTES.red.mid])
+  assert.ok(Math.abs(u.uShift.value - 0.1) < 1e-9)
+  tint.tick(TINT.settle, u)
+  assert.equal(u.uShift.value, TINT.settle)
+})
+
+test('picked while it turns, the next colour waits and hurries this one on; the last pick wins', () => {
+  const tint = createTint('blue')
+  const u = new FakeTintUniforms()
+  tint.pick('red')
+  tint.tick(1, u)
+  tint.pick('purple')
+  tint.pick('white')
+  assert.equal(tint.target(), 'white')
+  tint.tick(0.1, u)
+  assert.ok(Math.abs(u.uShift.value - (1 + 0.1 * TINT.hurry)) < 1e-9)
+  assert.deepEqual(u.uMid.value.rgb, SOUL_PALETTES.red.mid)
+  tint.tick(TINT.settle, u)
+  assert.deepEqual([u.uMidWas.value.rgb, u.uMid.value.rgb], [SOUL_PALETTES.red.mid, SOUL_PALETTES.white.mid])
+  assert.equal(u.uShift.value, 0)
+})
+
+test('the colour it already has changes nothing, and an unknown one is refused', () => {
+  const tint = createTint('blue')
+  const u = new FakeTintUniforms()
+  tint.pick('blue')
+  tint.tick(0.1, u)
+  assert.equal(u.uShift.value, TINT.settle)
+  assert.throws(() => tint.pick('green'), /unknown soul palette "green", expected one of blue/)
 })

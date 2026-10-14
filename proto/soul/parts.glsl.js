@@ -2,12 +2,25 @@
 // glow, the flames, the smoke over them and the embers. World units: the heart's radius is
 // 1 and its centre is the origin, y up. flight.glsl.js carries a particle here from the dust.
 
+import { TINT } from './tint.js'
+
+const f = (x) => x.toFixed(3) // a GLSL float
+
 export const PARTS = /* glsl */ `
   const float PI = 3.14159265;
   struct Spark { vec2 xy; float size; float alpha; float heat; };
 
-  vec3 heatColor(float h) {
-    return h < 0.5 ? mix(uCool, uMid, h * 2.0) : mix(uMid, uHot, h * 2.0 - 1.0);
+  vec3 ramp(float h, vec3 hot, vec3 mid, vec3 cool) {
+    return h < 0.5 ? mix(cool, mid, h * 2.0) : mix(mid, hot, h * 2.0 - 1.0);
+  }
+  // How far a particle here has turned to the new colour, 0..1 (tint.js): the farther from
+  // the heart, the later, and each at its own moment, so the change climbs the fire.
+  float tintAt(vec2 p, float w) {
+    float delay = ${f(TINT.pace)} * min(length(p - vec2(0.0, 0.6)), ${f(TINT.reach)}) + ${f(TINT.spread)} * fract(w * 91.7);
+    return smoothstep(0.0, 1.0, (uShift - delay) / ${f(TINT.turn)});
+  }
+  vec3 heatColor(float h, float k) {
+    return mix(ramp(h, uHotWas, uMidWas, uCoolWas), ramp(h, uHot, uMid, uCool), k);
   }
   // The whole flame sways, more the higher it is; the smoke rides on the same sway.
   float sway(float y) {
