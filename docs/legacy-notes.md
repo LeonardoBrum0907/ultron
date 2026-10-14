@@ -34,3 +34,8 @@ Refactors in progress and known traps. Add a line when you find one; remove it w
   Still `.mjs`: `server.mjs` (the HTTP routes), `chrome.mjs`, `page.mjs`,
   `net.mjs`, `shell.mjs`, `auth.mjs`. Each needs characterization tests of its
   routes first, and `auth.mjs` and `shell.mjs` need Léo's OK (AGENTS.md).
+  `auth.mjs` and `shell.mjs` now have characterization tests
+  (`bridge/test/auth.test.ts`, `bridge/test/shell.test.ts`; Léo OK'd the tests
+  on 2026-10-13, changing their code still needs his word). The shell tests
+  that run a command are skipped on Windows: Git Bash paths and taskkill are
+  not pinned yet.
