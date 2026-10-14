@@ -107,6 +107,10 @@ caso ela inventa a sua), e o clique na poeira liga o app. Os ganchos de dev fica
 - **Arquivo principal:** `proto/main.js`, com cerca de 2.500 linhas, Three.js e um único
   vertex shader para todas as camadas. A audição (microfone e voz simulada) fica em
   `proto/hearing.js`.
+- **Soul Eater:** `http://localhost:5173/proto/soul.html` (ou S na demo) é outro personagem
+  de partículas: um orbe com chamas e fumaça, tudo no shader de `proto/soul/`. O cursor
+  abana o fogo, o clique faz ele crescer, P troca a cor e M deixa o microfone alimentar as
+  chamas. Testes da parte de CPU: `node --test proto/soul/soul.test.js`.
 
 ### 4.1 Arte
 

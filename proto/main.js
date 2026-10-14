@@ -20,3 +20,10 @@ attachPointer(mind)
 createPanel(mind, { key: 'e' })
 
 await createFigure({ canvas: document.getElementById('gl'), mind, controls: true })
+
+// S: the soul eater, another character made of particles (soul.html, its own page).
+const openSoul = () => location.assign('./soul.html')
+document.getElementById('soul').addEventListener('click', openSoul)
+window.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() === 's') openSoul()
+})
