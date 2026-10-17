@@ -1,0 +1,12 @@
+# The bridge image only needs package*.json and bridge/ (deploy/bridge.Dockerfile).
+# Keep secrets and bulky build output out of the build context.
+node_modules
+dist
+dist-ssr
+.git
+.env
+.env.*
+!.env.example
+deploy/.env
+public/mediapipe
+proto

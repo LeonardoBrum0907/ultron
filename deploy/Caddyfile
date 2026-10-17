@@ -1,0 +1,7 @@
+# HTTPS in front of the bridge. Caddy gets and renews the certificate from
+# Let's Encrypt by itself once the domain's DNS points at this VPS, and passes
+# WebSocket upgrades through without extra config.
+{$ULTRON_API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy bridge:8787
+}
