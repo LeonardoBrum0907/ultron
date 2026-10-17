@@ -1,4 +1,5 @@
 import { cpSync, existsSync, mkdirSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 
 /**
  * Put MediaPipe's WebAssembly where the page can actually load it.
@@ -33,3 +34,7 @@ export function vendorWasm() {
   }
 }
 
+
+// Run directly (`node scripts/vendor-wasm.mjs`) by builds that skip `npm start`,
+// such as the Vercel build (vercel.json).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) vendorWasm()

@@ -1,9 +1,40 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
+/** Where index.html's CSP lets the page load the bridge's audio, images and frames from. */
+const LOCAL_BRIDGE = 'http://localhost:8787 http://127.0.0.1:8787'
+
+/**
+ * Adds the bridge named in VITE_BRIDGE_URL to the CSP in index.html.
+ *
+ * A build hosted away from the bridge (Vercel, with the bridge on a VPS) plays
+ * the bridge's speech and shows its screenshots and pages; the CSP only names
+ * the local bridge, so without this the browser blocks all of them.
+ * Example: VITE_BRIDGE_URL=wss://api.example.com adds https://api.example.com.
+ */
+function bridgeInCsp(bridgeUrl: string | undefined): Plugin {
+  const origin = bridgeOrigin(bridgeUrl)
+  return {
+    name: 'ultron-bridge-csp',
+    transformIndexHtml: (html) =>
+      origin ? html.replaceAll(LOCAL_BRIDGE, `${LOCAL_BRIDGE} ${origin}`) : html,
+  }
+}
+
+/** wss://api.example.com/bridge → https://api.example.com; null when unset or not a URL. */
+function bridgeOrigin(bridgeUrl: string | undefined): string | null {
+  const url = bridgeUrl?.trim()
+  if (!url) return null
+  try {
+    return new URL(url.replace(/^ws/, 'http')).origin
+  } catch {
+    throw new Error(`VITE_BRIDGE_URL="${url}" is not a URL like wss://api.example.com`)
+  }
+}
+
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react()],
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), bridgeInCsp(loadEnv(mode, process.cwd(), 'VITE_').VITE_BRIDGE_URL)],
   server: {
     // Honour PORT so a second instance can run alongside the first. The bridge
     // only accepts sockets from localhost:5173-5199, so stay inside that range
@@ -38,4 +69,4 @@ export default defineConfig({
     // untouched fixes it.
     exclude: ['kokoro-js', 'phonemizer', '@huggingface/transformers'],
   },
-})
+}))
