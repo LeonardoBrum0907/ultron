@@ -1,0 +1,63 @@
+# Ultron's backend on a VPS: the bridge, a Postgres and Caddy for HTTPS.
+# The face (the Vite app) is hosted elsewhere (Vercel), see docs/hospedagem.md.
+#
+#   cp deploy/.env.example deploy/.env   # then fill it in
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# Only Caddy publishes ports. The bridge and the database are reachable only
+# inside this compose network.
+
+services:
+  bridge:
+    build:
+      context: ..
+      dockerfile: deploy/bridge.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Everything reaches the bridge through Caddy, so every request counts as
+      # remote and needs ULTRON_PASSWORD (bridge/auth.mjs). Shell and writes
+      # would act on this server, not on Léo's PC: off unless .env says so.
+      ULTRON_ALLOW_SHELL: ${ULTRON_ALLOW_SHELL:-0}
+      ULTRON_ALLOW_WRITES: ${ULTRON_ALLOW_WRITES:-0}
+    volumes:
+      - bridge-home:/home/node
+    depends_on:
+      - db
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ultron}
+      POSTGRES_USER: ${POSTGRES_USER:-ultron}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      ULTRON_API_DOMAIN: ${ULTRON_API_DOMAIN:?set ULTRON_API_DOMAIN in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - bridge
+
+volumes:
+  bridge-home:
+  db-data:
+  caddy-data:
+  caddy-config:

@@ -24,6 +24,10 @@ Refactors in progress and known traps. Add a line when you find one; remove it w
 - `bridge/brain-route.ts` and `bridge/shell.mjs` both decide "a page on this
   machine" (loopback via `isRemote`, plus an Origin). Make `shell.mjs` use the
   route's check once its characterization tests exist.
+- Behind a reverse proxy (the VPS setup in `deploy/`) every request is remote, and
+  the remote gate (`gate`/`sameOrigin` in `bridge/auth.mjs`) only accepts a page
+  served from the bridge's own host. `ULTRON_ALLOWED_ORIGINS` is consulted only for
+  local requests, so a page on another host (Vercel) gets 403 until auth learns it.
 
 ## Refactors in progress
 
